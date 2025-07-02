@@ -1,5 +1,3 @@
 python-telegram-bot[ext]
-pydub
 google-generativeai
-openai-whisper
-ffmpeg-python
+deepgram-sdk
