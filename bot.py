@@ -26,7 +26,7 @@ logging.basicConfig(
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY') # Ваш ключ будет здесь
+DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
 
 # Настройки бота
 DAYS_TO_ANALYZE = 5
@@ -121,7 +121,9 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
                 language="ru"
             )
             
-            response = await deepgram.listen.prerecorded.v("1").send(payload, options)
+            # --- ИСПРАВЛЕННАЯ СТРОКА ---
+            # Используем новый синтаксис deepgram.listen.rest.transcribe_file
+            response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
             message_text = response.results.channels[0].alternatives[0].transcript
 
         except Exception as e:
