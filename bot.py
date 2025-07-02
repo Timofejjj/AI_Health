@@ -1,15 +1,20 @@
 import os
 import sqlite3
-import whisper
-from pydub import AudioSegment
 import google.generativeai as genai
 from datetime import datetime, timedelta, timezone
 import telegram
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
+import asyncio
 
-# --- НАСТРОЙКА ---
+# Импорты для Deepgram
+from deepgram import (
+    DeepgramClient,
+    PrerecordedOptions,
+)
+
+# --- 1. НАСТРОЙКА И КОНФИГУРАЦИЯ ---
 
 # Включаем логирование для отладки на сервере
 logging.basicConfig(
@@ -17,28 +22,28 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Загрузка ключей из переменных окружения (для Render)
+# Загрузка ключей из переменных окружения (как настроено на Koyeb)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY') # Ваш ключ будет здесь
 
-# Основные настройки
+# Настройки бота
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
 
-# Создаем папку для временных аудиофайлов, если ее нет
+# Создаем папку для временных аудиофайлов
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
+# --- 2. ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
 
-# --- ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
-
-# Проверка наличия ключей
-if not BOT_TOKEN or not GEMINI_API_KEY or not WEBHOOK_URL:
-    logging.error("КРИТИЧЕСКАЯ ОШИБКА: Один или несколько ключей (BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL) не найдены в переменных окружения.")
+# Проверка наличия всех ключей перед запуском
+if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
+    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один или несколько ключей (BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY) не найдены в переменных окружения.")
     exit()
 
-# Настройка Google Gemini
+# Инициализация клиента Google Gemini
 try:
     genai.configure(api_key=GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -47,20 +52,19 @@ except Exception as e:
     logging.error(f"❌ Ошибка конфигурации Gemini: {e}")
     gemini_model = None
 
-# ВАЖНЫЙ КОМПРОМИСС: Используем легкую модель Whisper для работы на бесплатных серверах
-logging.info("Загрузка модели Whisper (base)...")
+# Инициализация клиента Deepgram
 try:
-    whisper_model = whisper.load_model("base")
-    logging.info("✅ Модель Whisper загружена.")
+    deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+    logging.info("✅ Клиент Deepgram успешно настроен.")
 except Exception as e:
-    logging.error(f"❌ Ошибка загрузки модели Whisper: {e}")
-    whisper_model = None
+    logging.error(f"❌ Ошибка конфигурации Deepgram: {e}")
+    deepgram = None
 
-# --- РАБОТА С БАЗОЙ ДАННЫХ ---
+
+# --- 3. ФУНКЦИИ-ОБРАБОТЧИКИ ---
 
 def setup_database():
-    """Создает таблицу в базе данных, если она еще не существует."""
-    # check_same_thread=False важно для работы с асинхронной библиотекой
+    """Создает и настраивает базу данных SQLite."""
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
@@ -75,8 +79,6 @@ def setup_database():
     conn.close()
     logging.info(f"✅ База данных '{DB_NAME}' готова к работе.")
 
-
-# --- ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет приветственное сообщение при команде /start."""
@@ -96,32 +98,39 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сохраняет текстовое или голосовое сообщение пользователя в базу данных."""
+    """Обрабатывает текстовые и голосовые сообщения, распознает речь и сохраняет в БД."""
     user_id = update.message.from_user.id
     message_text = ""
     processing_message = await update.message.reply_text("🧠 Обрабатываю и сохраняю мысль...")
 
     if update.message.voice:
-        ogg_path, wav_path = None, None
+        ogg_path = None
         try:
             voice_file = await update.message.voice.get_file()
             ogg_path = os.path.join(AUDIO_DIR, f"{voice_file.file_id}.ogg")
             await voice_file.download_to_drive(ogg_path)
+
+            with open(ogg_path, "rb") as audio:
+                buffer_data = audio.read()
+
+            payload = {"buffer": buffer_data}
             
-            wav_path = ogg_path.rsplit('.', 1)[0] + '.wav'
-            AudioSegment.from_file(ogg_path).export(wav_path, format="wav")
+            options = PrerecordedOptions(
+                model="nova-2",
+                smart_format=True,
+                language="ru"
+            )
             
-            result = whisper_model.transcribe(wav_path, language="ru")
-            message_text = result.get('text', '').strip()
+            response = await deepgram.listen.prerecorded.v("1").send(payload, options)
+            message_text = response.results.channels[0].alternatives[0].transcript
 
         except Exception as e:
-            logging.error(f"Ошибка обработки голосового сообщения: {e}")
-            await processing_message.edit_text(f"❌ Не удалось обработать голосовое сообщение. Попробуйте снова.")
+            logging.error(f"Ошибка обработки голосового сообщения через Deepgram: {e}")
+            await processing_message.edit_text("❌ Не удалось обработать голосовое сообщение. Попробуйте снова.")
             return
         finally:
-            # Очистка временных файлов
-            if ogg_path and os.path.exists(ogg_path): os.remove(ogg_path)
-            if wav_path and os.path.exists(wav_path): os.remove(wav_path)
+            if ogg_path and os.path.exists(ogg_path):
+                os.remove(ogg_path)
 
     elif update.message.text:
         message_text = update.message.text
@@ -139,13 +148,13 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
             await processing_message.edit_text("✅ Мысль сохранена. Для анализа отправьте /analyze")
         except Exception as e:
             logging.error(f"Ошибка сохранения в БД: {e}")
-            await processing_message.edit_text(f"❌ Произошла внутренняя ошибка. Не удалось сохранить мысль.")
+            await processing_message.edit_text("❌ Произошла внутренняя ошибка. Не удалось сохранить мысль.")
 
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запускает анализ сообщений пользователя за последние N дней."""
+    """Запускает анализ сообщений пользователя и отправляет отчет."""
     user_id = update.message.from_user.id
-    await update.message.reply_text("⏳ Начинаю анализ ваших записей за последние 5 дней... Это может занять несколько минут.")
+    await update.message.reply_text("⏳ Начинаю анализ ваших записей... Это может занять несколько минут.")
 
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=DAYS_TO_ANALYZE)
@@ -166,7 +175,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not rows:
-        await update.message.reply_text(f"За последние {DAYS_TO_ANALYZE} дней не найдено записей для анализа. Просто отправляйте мне свои мысли текстом или голосом.")
+        await update.message.reply_text(f"За последние {DAYS_TO_ANALYZE} дней не найдено записей для анализа.")
         return
 
     all_texts = [row[0] for row in rows]
@@ -257,7 +266,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ---
 """
     try:
-        response = gemini_model.generate_content(prompt)
+        response = await gemini_model.generate_content_async(prompt)
         summary = response.text
     except Exception as e:
         logging.error(f"Ошибка при обращении к Gemini API: {e}")
@@ -266,7 +275,6 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     final_message = f"**🗓️ Ваш персональный отчет**\n*(Период: {date_range_str})*\n\n{summary}"
 
-    # Отправка длинных сообщений по частям
     try:
         if len(final_message) > 4096:
             for i in range(0, len(final_message), 4096):
@@ -278,24 +286,22 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Не удалось отправить отчет. Попробуйте запросить анализ снова.")
 
 
-# --- ОСНОВНАЯ ФУНКЦИЯ ЗАПУСКА ---
+# --- 4. ЗАПУСК БОТА ---
+
 def main():
-    """Настраивает и запускает бота."""
-    if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, gemini_model, whisper_model]):
-        logging.critical("Запуск невозможен. Проверьте логи на предмет ошибок инициализации.")
+    """Настраивает и запускает бота для работы на сервере."""
+    if not all([gemini_model, deepgram]):
+        logging.critical("Запуск невозможен. Один из клиентов (Gemini или Deepgram) не был инициализирован.")
         return
 
     setup_database()
     
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Регистрация обработчиков
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
 
-    # Запускаем бота через webhook для работы на сервере
-    # Порт 8000 является стандартным для многих платформ
     application.run_webhook(
         listen="0.0.0.0",
         port=8000,
