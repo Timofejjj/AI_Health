@@ -315,11 +315,13 @@ def main():
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
 
+    SECRET_TOKEN = os.environ.get('SECRET_TOKEN')
     application.run_webhook(
         listen="0.0.0.0",
         port=8000,
         url_path=BOT_TOKEN,
         webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
+        secret_token=SECRET_TOKEN # <--- ДОБАВЛЕНА ЭТА СТРОКА
     )
 
 if __name__ == '__main__':
