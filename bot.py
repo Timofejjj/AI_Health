@@ -121,10 +121,17 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
                 language="ru"
             )
             
-            # --- ИСПРАВЛЕННАЯ СТРОКА ---
-            # Используем новый синтаксис deepgram.listen.rest.transcribe_file
+            # --- ИСПРАВЛЕННЫЙ И НАДЕЖНЫЙ БЛОК КОДА ---
             response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
-            message_text = response.results.channels[0].alternatives[0].transcript
+
+            # Проверяем, что в ответе есть результат, прежде чем его разбирать
+            if response.results and response.results.channels and response.results.channels[0].alternatives:
+                message_text = response.results.channels[0].alternatives[0].transcript
+                logging.info(f"Deepgram распознал: {message_text[:100]}...") # Логируем для отладки
+            else:
+                # Если Deepgram вернул пустой результат (например, тишина в аудио)
+                logging.warning("Deepgram вернул пустой результат. Аудио могло быть пустым.")
+                message_text = "" # Оставляем текст пустым, чтобы не было ошибки
 
         except Exception as e:
             logging.error(f"Ошибка обработки голосового сообщения через Deepgram: {e}")
@@ -137,6 +144,7 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
     elif update.message.text:
         message_text = update.message.text
 
+    # Сохраняем только если есть текст (избегаем сохранения пустых сообщений)
     if message_text:
         try:
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -151,6 +159,9 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             logging.error(f"Ошибка сохранения в БД: {e}")
             await processing_message.edit_text("❌ Произошла внутренняя ошибка. Не удалось сохранить мысль.")
+    else:
+        # Если текста нет (например, нераспознанное аудио), информируем пользователя
+        await processing_message.edit_text("⚠️ Речь не распознана. Сообщение не сохранено.")
 
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
