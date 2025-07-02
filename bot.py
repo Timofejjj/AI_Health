@@ -16,34 +16,32 @@ from deepgram import (
 
 # --- 1. НАСТРОЙКА И КОНФИГУРАЦИЯ ---
 
-# Включаем логирование для отладки на сервере
+# Включаем логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Загрузка ключей из переменных окружения (как настроено на Koyeb)
+# Загружаем ВСЕ ключи из переменных окружения
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
+SECRET_TOKEN = os.environ.get('SECRET_TOKEN')
+
+# Проверяем наличие ВСЕХ ключей
+if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY, SECRET_TOKEN]):
+    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один или несколько ключей не найдены. Проверьте: BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY, SECRET_TOKEN")
+    exit(1) # Завершаем работу с кодом ошибки, если чего-то не хватает
 
 # Настройки бота
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
 
-# Создаем папку для временных аудиофайлов
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 # --- 2. ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
-
-# Проверка наличия всех ключей перед запуском
-if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
-    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один или несколько ключей (BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY) не найдены в переменных окружения.")
-    exit()
-
-# Инициализация клиента Google Gemini
 try:
     genai.configure(api_key=GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -52,7 +50,6 @@ except Exception as e:
     logging.error(f"❌ Ошибка конфигурации Gemini: {e}")
     gemini_model = None
 
-# Инициализация клиента Deepgram
 try:
     deepgram = DeepgramClient(DEEPGRAM_API_KEY)
     logging.info("✅ Клиент Deepgram успешно настроен.")
@@ -121,17 +118,14 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
                 language="ru"
             )
             
-            # --- ИСПРАВЛЕННЫЙ И НАДЕЖНЫЙ БЛОК КОДА ---
             response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
 
-            # Проверяем, что в ответе есть результат, прежде чем его разбирать
             if response.results and response.results.channels and response.results.channels[0].alternatives:
                 message_text = response.results.channels[0].alternatives[0].transcript
-                logging.info(f"Deepgram распознал: {message_text[:100]}...") # Логируем для отладки
+                logging.info(f"Deepgram распознал: {message_text[:100]}...")
             else:
-                # Если Deepgram вернул пустой результат (например, тишина в аудио)
                 logging.warning("Deepgram вернул пустой результат. Аудио могло быть пустым.")
-                message_text = "" # Оставляем текст пустым, чтобы не было ошибки
+                message_text = ""
 
         except Exception as e:
             logging.error(f"Ошибка обработки голосового сообщения через Deepgram: {e}")
@@ -144,7 +138,6 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
     elif update.message.text:
         message_text = update.message.text
 
-    # Сохраняем только если есть текст (избегаем сохранения пустых сообщений)
     if message_text:
         try:
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -160,7 +153,6 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
             logging.error(f"Ошибка сохранения в БД: {e}")
             await processing_message.edit_text("❌ Произошла внутренняя ошибка. Не удалось сохранить мысль.")
     else:
-        # Если текста нет (например, нераспознанное аудио), информируем пользователя
         await processing_message.edit_text("⚠️ Речь не распознана. Сообщение не сохранено.")
 
 
@@ -315,13 +307,12 @@ def main():
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
 
-    SECRET_TOKEN = os.environ.get('SECRET_TOKEN')
     application.run_webhook(
         listen="0.0.0.0",
         port=8000,
         url_path=BOT_TOKEN,
-        webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
-        secret_token=SECRET_TOKEN # <--- ДОБАВЛЕНА ЭТА СТРОКА
+        webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}",
+        secret_token=SECRET_TOKEN
     )
 
 if __name__ == '__main__':
