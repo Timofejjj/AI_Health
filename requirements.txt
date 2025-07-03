@@ -1,7 +1,6 @@
 python-telegram-bot[ext]
 google-generativeai
 deepgram-sdk
-# flask[async]  <-- УДАЛЯЕМ
-fastapi       # <-- ДОБАВЛЯЕМ
+fastapi
 gunicorn
 uvicorn
