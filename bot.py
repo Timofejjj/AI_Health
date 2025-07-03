@@ -1,5 +1,3 @@
-
-
 import os
 import sqlite3
 import google.generativeai as genai
@@ -10,82 +8,63 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import asyncio
 import threading
-
-# Импорты для веб-сервера и распознавания речи
-from flask import Flask
+from flask import Flask, request
 from deepgram import DeepgramClient, PrerecordedOptions
 
-# --- 1. НАСТРОЙКА И КОНФИГУРАЦИЯ ---
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Загрузка ключей из переменных окружения
+# --- 1. CONFIGURATION ---
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
-# Koyeb предоставляет порт через переменную окружения PORT
 PORT = int(os.environ.get('PORT', 8000))
 
-# Проверяем наличие всех необходимых ключей
 if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
-    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один из ключей не найден. Проверьте BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY")
+    logging.critical("CRITICAL ERROR: One or more environment variables are missing.")
     exit(1)
 
-# Настройки бота
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-
-# --- 2. ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
-try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-    logging.info("✅ Модель Gemini успешно настроена.")
-except Exception as e:
-    logging.error(f"❌ Ошибка конфигурации Gemini: {e}")
-    gemini_model = None
-
-try:
-    deepgram = DeepgramClient(DEEPGRAM_API_KEY)
-    logging.info("✅ Клиент Deepgram успешно настроен.")
-except Exception as e:
-    logging.error(f"❌ Ошибка конфигурации Deepgram: {e}")
-    deepgram = None
-
-# --- 3. FLASK-ПРИЛОЖЕНИЕ ДЛЯ HEALTH CHECKS ---
+# --- 2. SERVICE INITIALIZATION ---
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+# Создаем приложение, но не запускаем его здесь
+application = Application.builder().token(BOT_TOKEN).build()
 flask_app = Flask(__name__)
+logging.info("All services initialized.")
+
+# --- 3. FLASK ROUTES & WEBHOOK ---
 @flask_app.route('/health')
 def health_check():
-    """Этот эндпоинт отвечает 'OK' на GET-запросы от UptimeRobot."""
+    """Эндпоинт для UptimeRobot, чтобы бот не засыпал."""
     return "OK", 200
 
+@flask_app.route(f'/{BOT_TOKEN}', methods=['POST'])
+async def telegram_webhook() -> str:
+    """Принимает обновления от Telegram и передает их в python-telegram-bot."""
+    try:
+        update_data = request.get_json(force=True)
+        update = Update.de_json(data=update_data, bot=application.bot)
+        await application.process_update(update)
+        return "OK", 200
+    except Exception as e:
+        logging.error(f"Error processing webhook: {e}")
+        return "Error", 500
 
-# --- 4. ФУНКЦИИ-ОБРАБОТЧИКИ ТЕЛЕГРАМ БОТА ---
-
+# --- 4. TELEGRAM BOT HANDLERS ---
 def setup_database():
-    """Создает и настраивает базу данных SQLite."""
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            timestamp DATETIME NOT NULL,
-            content TEXT NOT NULL
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, user_id INTEGER, timestamp DATETIME, content TEXT)''')
     conn.commit()
     conn.close()
-    logging.info(f"✅ База данных '{DB_NAME}' готова к работе.")
+    logging.info(f"Database '{DB_NAME}' is ready.")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет приветственное сообщение при команде /start."""
     welcome_text = """
 👋 Привет! Я HealthAI, ваш личный когнитивный аналитик.
 
@@ -101,43 +80,34 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает текстовые и голосовые сообщения, распознает речь и сохраняет в БД."""
     user_id = update.message.from_user.id
     message_text = ""
     processing_message = await update.message.reply_text("🧠 Обрабатываю и сохраняю мысль...")
-
     if update.message.voice:
         ogg_path = None
         try:
             voice_file = await update.message.voice.get_file()
             ogg_path = os.path.join(AUDIO_DIR, f"{voice_file.file_id}.ogg")
             await voice_file.download_to_drive(ogg_path)
-
-            with open(ogg_path, "rb") as audio:
-                buffer_data = audio.read()
-
+            with open(ogg_path, "rb") as audio: buffer_data = audio.read()
             payload = {"buffer": buffer_data}
             options = PrerecordedOptions(model="nova-2", smart_format=True, language="ru")
-            
             response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
-
             if response.results and response.results.channels and response.results.channels[0].alternatives:
                 message_text = response.results.channels[0].alternatives[0].transcript
-                logging.info(f"Deepgram распознал: {message_text[:100]}...")
+                logging.info(f"Deepgram recognized: {message_text[:100]}...")
             else:
-                logging.warning("Deepgram вернул пустой результат. Аудио могло быть пустым.")
+                logging.warning("Deepgram returned an empty result.")
                 message_text = ""
         except Exception as e:
-            logging.error(f"Ошибка обработки голосового сообщения: {e}")
+            logging.error(f"Error processing voice message: {e}")
             await processing_message.edit_text("❌ Не удалось обработать голосовое сообщение.")
             return
         finally:
-            if ogg_path and os.path.exists(ogg_path):
-                os.remove(ogg_path)
-
+            if ogg_path and os.path.exists(ogg_path): os.remove(ogg_path)
     elif update.message.text:
         message_text = update.message.text
-
+        
     if message_text:
         try:
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -145,16 +115,17 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
             cursor.execute("INSERT INTO messages (user_id, timestamp, content) VALUES (?, ?, ?)", (user_id, datetime.now(timezone.utc), message_text))
             conn.commit()
             conn.close()
-            await processing_message.edit_text("✅ Мысль сохранена. Для анализа отправьте /analyze")
+            await processing_message.edit_text("✅ Мысль сохранена.")
         except Exception as e:
-            logging.error(f"Ошибка сохранения в БД: {e}")
+            logging.error(f"DB save error: {e}")
             await processing_message.edit_text("❌ Внутренняя ошибка сохранения.")
     else:
-        await processing_message.edit_text("⚠️ Речь не распознана. Сообщение не сохранено.")
+        await processing_message.edit_text("⚠️ Речь не распознана.")
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    await update.message.reply_text("⏳ Начинаю анализ ваших записей...")
+    await update.message.reply_text("⏳ Начинаю анализ ваших записей... Это может занять несколько минут.")
+    
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=DAYS_TO_ANALYZE)
     date_range_str = f"период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
@@ -171,7 +142,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     all_texts = [row[0] for row in rows]
     full_text = "\n\n---\n\n".join(reversed(all_texts))
-    
+
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 
@@ -254,52 +225,41 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 **Важное напоминание:** Я являюсь языковой моделью и не могу заменить профессионального психолога или психотерапевта. Этот анализ предназначен для саморефлексии. Если ты чувствуешь серьезное ухудшение состояния, пожалуйста, обратись к специалисту.
 
+---
 """
     try:
         response = await gemini_model.generate_content_async(prompt)
         summary = response.text
     except Exception as e:
-        logging.error(f"Ошибка при обращении к Gemini API: {e}")
+        logging.error(f"Error calling Gemini API: {e}")
         await update.message.reply_text("❌ Ошибка генерации отчета.")
         return
-
     final_message = f"**🗓️ Ваш персональный отчет**\n*(Период: {date_range_str})*\n\n{summary}"
-    if len(final_message) > 4096:
-        for i in range(0, len(final_message), 4096):
-            await update.message.reply_text(final_message[i:i+4096], parse_mode='Markdown')
-    else:
-        await update.message.reply_text(final_message, parse_mode='Markdown')
+    try:
+        if len(final_message) > 4096:
+            for i in range(0, len(final_message), 4096): await update.message.reply_text(final_message[i:i+4096], parse_mode='Markdown')
+        else: await update.message.reply_text(final_message, parse_mode='Markdown')
+    except Exception as e:
+        logging.error(f"Error sending message to Telegram: {e}")
+        await update.message.reply_text("❌ Не удалось отправить отчет.")
 
-# --- 5. ЗАПУСК ПРИЛОЖЕНИЯ ---
-
-async def main():
-    """Настраивает и запускает телеграм-бота и веб-сервер."""
-    if not all([gemini_model, deepgram]):
-        logging.critical("Запуск невозможен, один из API клиентов не инициализирован.")
-        return
-        
+# --- 5. MAIN APPLICATION LOGIC ---
+async def initialize_bot():
+    """Настраивает все, что нужно для работы бота, но не запускает его."""
     setup_database()
-    
-    # Настраиваем приложение телеграм-бота
-    application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
-    
-    # Устанавливаем вебхук для получения обновлений от Telegram
     await application.bot.set_webhook(url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}")
-
-    # Запускаем Flask-сервер в отдельном потоке
-    flask_thread = threading.Thread(target=lambda: flask_app.run(host='0.0.0.0', port=PORT, debug=False))
-    flask_thread.daemon = True
-    flask_thread.start()
-    logging.info(f"Flask health check сервер запущен на порту {PORT}.")
-
-    # Запускаем основное приложение Telegram бота
-    async with application:
-        await application.start()
-        logging.info("Telegram бот запущен и готов к работе.")
-        await asyncio.Event().wait() # Держим основной поток живым
+    logging.info("Telegram bot handlers and webhook are set.")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # Инициализируем бота асинхронно
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        logging.warning("Asyncio loop is already running.")
+    else:
+        loop.run_until_complete(initialize_bot())
+    
+    # Запускаем Flask сервер, который будет основным процессом
+    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
