@@ -46,6 +46,10 @@ def health_check():
 @api.post(f'/{BOT_TOKEN}')
 async def telegram_webhook(request: Request) -> Response:
     """Принимает обновления от Telegram и передает их в обработчик PTB."""
+    if not application.initialized:
+        logging.error("FATAL: Application not initialized. Cannot process update.")
+        return Response(content="Error: Bot not ready", status_code=503) # Service Unavailable
+        
     try:
         update_data = await request.json()
         update = Update.de_json(data=update_data, bot=application.bot)
@@ -92,7 +96,8 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
             with open(ogg_path, "rb") as audio: buffer_data = audio.read()
             payload = {"buffer": buffer_data}
             options = PrerecordedOptions(model="nova-2", smart_format=True, language="ru")
-            response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
+            # Используем асинхронный вызов, раз уж мы в async-функции
+            response = await deepgram.listen.asynclisten.v("1").transcribe_file(payload, options)
             if response.results and response.results.channels and response.results.channels[0].alternatives:
                 message_text = response.results.channels[0].alternatives[0].transcript
                 logging.info(f"Deepgram recognized: {message_text[:100]}...")
@@ -110,6 +115,8 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
         
     if message_text:
         try:
+            # Важно: Koyeb может перезапускать приложение, теряя файловую систему.
+            # Для постоянного хранения лучше использовать постоянный диск Koyeb или их БД.
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO messages (user_id, timestamp, content) VALUES (?, ?, ?)", (user_id, datetime.now(timezone.utc), message_text))
@@ -130,11 +137,15 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_date = end_date - timedelta(days=DAYS_TO_ANALYZE)
     date_range_str = f"период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
     
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("SELECT content FROM messages WHERE user_id = ? AND timestamp BETWEEN ? AND ?", (user_id, start_date, end_date))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT content FROM messages WHERE user_id = ? AND timestamp BETWEEN ? AND ?", (user_id, start_date, end_date))
+        rows = cursor.fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+         # Это произойдет, если база еще не создана
+        rows = []
 
     if not rows:
         await update.message.reply_text(f"За последние {DAYS_TO_ANALYZE} дней не найдено записей.")
@@ -234,28 +245,48 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error calling Gemini API: {e}")
         await update.message.reply_text("❌ Ошибка генерации отчета.")
         return
-    final_message = f"**🗓️ Ваш персональный отчет**\n*(Период: {date_range_str})*\n\n{summary}"
+        
+    final_message = f"**🗓️ Ваш персональный отчет**\n\n{summary}"
     try:
-        if len(final_message) > 4096:
-            for i in range(0, len(final_message), 4096): await update.message.reply_text(final_message[i:i+4096], parse_mode='Markdown')
-        else: await update.message.reply_text(final_message, parse_mode='Markdown')
+        # Разбиваем на части, если сообщение слишком длинное. Markdown V2 требует экранирования
+        final_message_md_escaped = final_message.replace(".", "\\.").replace("-", "\\-").replace("!", "\\!").replace("(", "\\(").replace(")", "\\)")
+        
+        if len(final_message_md_escaped) > 4096:
+            for i in range(0, len(final_message_md_escaped), 4096):
+                await update.message.reply_text(final_message_md_escaped[i:i+4096], parse_mode='MarkdownV2')
+        else:
+            await update.message.reply_text(final_message_md_escaped, parse_mode='MarkdownV2')
+            
     except Exception as e:
         logging.error(f"Error sending message to Telegram: {e}")
-        await update.message.reply_text("❌ Не удалось отправить отчет.")
+        # Если Markdown не удался, отправляем простым текстом
+        await update.message.reply_text(final_message)
+
 
 # --- 5. LIFESPAN EVENTS (STARTUP/SHUTDOWN) ---
 @api.on_event("startup")
 async def startup_event():
     """Выполняется один раз при старте FastAPI-сервера."""
     setup_database()
+    
+    # <<< ИЗМЕНЕНИЕ 1: ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ PTB
+    # Это "включает" PTB и готовит его к работе.
+    await application.initialize()
+    
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
-    await application.bot.set_webhook(url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}")
+    
+    # Устанавливаем вебхук
+    await application.bot.set_webhook(url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}", allowed_updates=Update.ALL_TYPES)
     logging.info("Telegram bot handlers and webhook are set.")
 
 @api.on_event("shutdown")
 async def shutdown_event():
     """Выполняется при остановке FastAPI-сервера."""
-    await application.bot.delete_webhook()
-    logging.info("Webhook deleted.")
+    
+    # <<< ИЗМЕНЕНИЕ 2: КОРРЕКТНОЕ ЗАВЕРШЕНИЕ РАБОТЫ PTB
+    # Это освобождает ресурсы и корректно завершает сессии.
+    await application.shutdown()
+    
+    logging.info("Webhook deleted and application shut down.")
