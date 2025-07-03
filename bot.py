@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 import asyncio
-from flask import Flask, request
+from fastapi import FastAPI, Request, Response
 from deepgram import DeepgramClient, PrerecordedOptions
 
 # --- 1. CONFIGURATION ---
@@ -17,9 +17,11 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
 PORT = int(os.environ.get('PORT', 8000))
+
 if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
     logging.critical("CRITICAL ERROR: One or more environment variables are missing.")
     exit(1)
+
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
@@ -29,29 +31,31 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+# Создаем приложение PTB, оно будет использоваться для обработки логики
 application = Application.builder().token(BOT_TOKEN).build()
-flask_app = Flask(__name__)
+# Создаем приложение FastAPI, оно будет управлять веб-сервером
+api = FastAPI()
 logging.info("All services initialized.")
 
-# --- 3. FLASK ROUTES & WEBHOOK ---
-@flask_app.route('/health')
+# --- 3. FASTAPI ROUTES (WEB ENDPOINTS) ---
+@api.get('/health')
 def health_check():
-    """Эндпоинт для UptimeRobot."""
-    return "OK", 200
+    """Этот эндпоинт используется UptimeRobot, чтобы бот не засыпал."""
+    return Response(content="OK", status_code=200)
 
-@flask_app.route(f'/{BOT_TOKEN}', methods=['POST'])
-async def telegram_webhook() -> str:
-    """Принимает обновления от Telegram и передает их в python-telegram-bot."""
+@api.post(f'/{BOT_TOKEN}')
+async def telegram_webhook(request: Request) -> Response:
+    """Принимает обновления от Telegram и передает их в обработчик PTB."""
     try:
-        update_data = request.get_json(force=True)
+        update_data = await request.json()
         update = Update.de_json(data=update_data, bot=application.bot)
         await application.process_update(update)
-        return "OK", 200
+        return Response(content="OK", status_code=200)
     except Exception as e:
         logging.error(f"Error processing webhook: {e}")
-        return "Error", 500
+        return Response(content="Error", status_code=500)
 
-# --- 4. TELEGRAM BOT HANDLERS ---
+# --- 4. TELEGRAM BOT HANDLERS (LOGIC) ---
 def setup_database():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
@@ -239,9 +243,10 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error sending message to Telegram: {e}")
         await update.message.reply_text("❌ Не удалось отправить отчет.")
 
-# --- 5. MAIN APPLICATION LOGIC ---
-async def initialize_bot():
-    """Выполняет асинхронную настройку бота."""
+# --- 5. LIFESPAN EVENTS (STARTUP/SHUTDOWN) ---
+@api.on_event("startup")
+async def startup_event():
+    """Выполняется один раз при старте FastAPI-сервера."""
     setup_database()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
@@ -249,15 +254,8 @@ async def initialize_bot():
     await application.bot.set_webhook(url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}")
     logging.info("Telegram bot handlers and webhook are set.")
 
-if __name__ == '__main__':
-    # Инициализируем бота при запуске
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        logging.warning("Asyncio loop is already running.")
-    else:
-        loop.run_until_complete(initialize_bot())
-    
-    # Этот файл будет запущен через WSGI-сервер типа Gunicorn,
-    # который будет импортировать `flask_app` и запускать его.
-    # Команда запуска настраивается в Koyeb.
-    logging.info("Initialization complete. Awaiting Gunicorn to run the app.")
+@api.on_event("shutdown")
+async def shutdown_event():
+    """Выполняется при остановке FastAPI-сервера."""
+    await application.bot.delete_webhook()
+    logging.info("Webhook deleted.")
