@@ -7,7 +7,6 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 import asyncio
-import threading
 from flask import Flask, request
 from deepgram import DeepgramClient, PrerecordedOptions
 
@@ -18,11 +17,9 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
 PORT = int(os.environ.get('PORT', 8000))
-
 if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
     logging.critical("CRITICAL ERROR: One or more environment variables are missing.")
     exit(1)
-
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
@@ -32,7 +29,6 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 deepgram = DeepgramClient(DEEPGRAM_API_KEY)
-# Создаем приложение, но не запускаем его здесь
 application = Application.builder().token(BOT_TOKEN).build()
 flask_app = Flask(__name__)
 logging.info("All services initialized.")
@@ -40,7 +36,7 @@ logging.info("All services initialized.")
 # --- 3. FLASK ROUTES & WEBHOOK ---
 @flask_app.route('/health')
 def health_check():
-    """Эндпоинт для UptimeRobot, чтобы бот не засыпал."""
+    """Эндпоинт для UptimeRobot."""
     return "OK", 200
 
 @flask_app.route(f'/{BOT_TOKEN}', methods=['POST'])
@@ -245,7 +241,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 5. MAIN APPLICATION LOGIC ---
 async def initialize_bot():
-    """Настраивает все, что нужно для работы бота, но не запускает его."""
+    """Выполняет асинхронную настройку бота."""
     setup_database()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
@@ -254,12 +250,14 @@ async def initialize_bot():
     logging.info("Telegram bot handlers and webhook are set.")
 
 if __name__ == '__main__':
-    # Инициализируем бота асинхронно
+    # Инициализируем бота при запуске
     loop = asyncio.get_event_loop()
     if loop.is_running():
         logging.warning("Asyncio loop is already running.")
     else:
         loop.run_until_complete(initialize_bot())
     
-    # Запускаем Flask сервер, который будет основным процессом
-    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
+    # Этот файл будет запущен через WSGI-сервер типа Gunicorn,
+    # который будет импортировать `flask_app` и запускать его.
+    # Команда запуска настраивается в Koyeb.
+    logging.info("Initialization complete. Awaiting Gunicorn to run the app.")
