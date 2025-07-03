@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем код нашего приложения
 COPY . .
 
-# --- ВАЖНОЕ ИЗМЕНЕНИЕ ---
-# Эта команда будет выполняться при запуске контейнера.
-# Она использует переменную окружения $PORT, которую предоставляет Koyeb.
-CMD gunicorn --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT bot:flask_app
+# --- ФИНАЛЬНАЯ И ПРАВИЛЬНАЯ КОМАНДА ЗАПУСКА ---
+# Эта форма ("exec form" с shell-оберткой) гарантирует, что переменная $PORT
+# будет правильно подставлена средой выполнения Koyeb.
+CMD ["/bin/sh", "-c", "gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT bot:api"]
