@@ -16,22 +16,21 @@ from deepgram import (
 
 # --- 1. НАСТРОЙКА И КОНФИГУРАЦИЯ ---
 
-# Включаем логирование
+# Включаем логирование для отладки на сервере
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Загружаем ВСЕ ключи из переменных окружения
+# Загружаем ключи из переменных окружения
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
-SECRET_TOKEN = os.environ.get('SECRET_TOKEN')
 
-# Проверяем наличие ВСЕХ ключей
-if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY, SECRET_TOKEN]):
-    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один или несколько ключей не найдены. Проверьте: BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY, SECRET_TOKEN")
+# Проверяем наличие всех необходимых ключей
+if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
+    logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один из ключей не найден. Проверьте BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY")
     exit(1) # Завершаем работу с кодом ошибки, если чего-то не хватает
 
 # Настройки бота
@@ -184,7 +183,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     all_texts = [row[0] for row in rows]
-    full_text = "\n\n---\n\n".join(all_texts)
+    full_text = "\n\n---\n\n".join(reversed(all_texts)) # Используем reversed для хронологического порядка
 
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
@@ -195,7 +194,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 **Анализируемый период:** {date_range_str}
 
-**Транскрипты сообщений:**
+**Транскрипты сообщений (от старых к новым):**
 {full_text}
 
 # КЛЮЧЕВЫЕ ДИРЕКТИВЫ ДЛЯ АНАЛИЗА
@@ -307,12 +306,12 @@ def main():
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
 
+    # Запускаем вебхук без secret_token, так как это вызывало проблемы
     application.run_webhook(
         listen="0.0.0.0",
         port=8000,
         url_path=BOT_TOKEN,
-        webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}",
-        secret_token=SECRET_TOKEN
+        webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
     )
 
 if __name__ == '__main__':
