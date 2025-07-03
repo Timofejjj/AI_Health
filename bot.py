@@ -1,3 +1,5 @@
+
+
 import os
 import sqlite3
 import google.generativeai as genai
@@ -7,38 +9,38 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 import asyncio
+import threading
 
-# Импорты для Deepgram
-from deepgram import (
-    DeepgramClient,
-    PrerecordedOptions,
-)
+# Импорты для веб-сервера и распознавания речи
+from flask import Flask
+from deepgram import DeepgramClient, PrerecordedOptions
 
 # --- 1. НАСТРОЙКА И КОНФИГУРАЦИЯ ---
 
-# Включаем логирование для отладки на сервере
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Загружаем ключи из переменных окружения
+# Загрузка ключей из переменных окружения
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_KEY')
+# Koyeb предоставляет порт через переменную окружения PORT
+PORT = int(os.environ.get('PORT', 8000))
 
 # Проверяем наличие всех необходимых ключей
 if not all([BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY]):
     logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Один из ключей не найден. Проверьте BOT_TOKEN, GEMINI_API_KEY, WEBHOOK_URL, DEEPGRAM_API_KEY")
-    exit(1) # Завершаем работу с кодом ошибки, если чего-то не хватает
+    exit(1)
 
 # Настройки бота
 DAYS_TO_ANALYZE = 5
 DB_NAME = 'user_messages.db'
 AUDIO_DIR = 'audio_files'
-
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
 
 # --- 2. ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
 try:
@@ -56,8 +58,15 @@ except Exception as e:
     logging.error(f"❌ Ошибка конфигурации Deepgram: {e}")
     deepgram = None
 
+# --- 3. FLASK-ПРИЛОЖЕНИЕ ДЛЯ HEALTH CHECKS ---
+flask_app = Flask(__name__)
+@flask_app.route('/health')
+def health_check():
+    """Этот эндпоинт отвечает 'OK' на GET-запросы от UptimeRobot."""
+    return "OK", 200
 
-# --- 3. ФУНКЦИИ-ОБРАБОТЧИКИ ---
+
+# --- 4. ФУНКЦИИ-ОБРАБОТЧИКИ ТЕЛЕГРАМ БОТА ---
 
 def setup_database():
     """Создает и настраивает базу данных SQLite."""
@@ -75,7 +84,6 @@ def setup_database():
     conn.close()
     logging.info(f"✅ База данных '{DB_NAME}' готова к работе.")
 
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет приветственное сообщение при команде /start."""
     welcome_text = """
@@ -91,7 +99,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Все ваши записи хранятся анонимно и доступны только вам для вашего личного анализа.
 """
     await update.message.reply_text(welcome_text)
-
 
 async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает текстовые и голосовые сообщения, распознает речь и сохраняет в БД."""
@@ -110,12 +117,7 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
                 buffer_data = audio.read()
 
             payload = {"buffer": buffer_data}
-            
-            options = PrerecordedOptions(
-                model="nova-2",
-                smart_format=True,
-                language="ru"
-            )
+            options = PrerecordedOptions(model="nova-2", smart_format=True, language="ru")
             
             response = await deepgram.listen.rest.v("1").transcribe_file(payload, options)
 
@@ -125,10 +127,9 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 logging.warning("Deepgram вернул пустой результат. Аудио могло быть пустым.")
                 message_text = ""
-
         except Exception as e:
-            logging.error(f"Ошибка обработки голосового сообщения через Deepgram: {e}")
-            await processing_message.edit_text("❌ Не удалось обработать голосовое сообщение. Попробуйте снова.")
+            logging.error(f"Ошибка обработки голосового сообщения: {e}")
+            await processing_message.edit_text("❌ Не удалось обработать голосовое сообщение.")
             return
         finally:
             if ogg_path and os.path.exists(ogg_path):
@@ -141,50 +142,36 @@ async def handle_text_or_voice(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             conn = sqlite3.connect(DB_NAME, check_same_thread=False)
             cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO messages (user_id, timestamp, content) VALUES (?, ?, ?)",
-                (user_id, datetime.now(timezone.utc), message_text)
-            )
+            cursor.execute("INSERT INTO messages (user_id, timestamp, content) VALUES (?, ?, ?)", (user_id, datetime.now(timezone.utc), message_text))
             conn.commit()
             conn.close()
             await processing_message.edit_text("✅ Мысль сохранена. Для анализа отправьте /analyze")
         except Exception as e:
             logging.error(f"Ошибка сохранения в БД: {e}")
-            await processing_message.edit_text("❌ Произошла внутренняя ошибка. Не удалось сохранить мысль.")
+            await processing_message.edit_text("❌ Внутренняя ошибка сохранения.")
     else:
         await processing_message.edit_text("⚠️ Речь не распознана. Сообщение не сохранено.")
 
-
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запускает анализ сообщений пользователя и отправляет отчет."""
     user_id = update.message.from_user.id
-    await update.message.reply_text("⏳ Начинаю анализ ваших записей... Это может занять несколько минут.")
-
+    await update.message.reply_text("⏳ Начинаю анализ ваших записей...")
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=DAYS_TO_ANALYZE)
     date_range_str = f"период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
-
-    try:
-        conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT content FROM messages WHERE user_id = ? AND timestamp BETWEEN ? AND ?",
-            (user_id, start_date, end_date)
-        )
-        rows = cursor.fetchall()
-        conn.close()
-    except Exception as e:
-        logging.error(f"Ошибка чтения из БД для анализа: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при доступе к вашим данным.")
-        return
+    
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("SELECT content FROM messages WHERE user_id = ? AND timestamp BETWEEN ? AND ?", (user_id, start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
 
     if not rows:
-        await update.message.reply_text(f"За последние {DAYS_TO_ANALYZE} дней не найдено записей для анализа.")
+        await update.message.reply_text(f"За последние {DAYS_TO_ANALYZE} дней не найдено записей.")
         return
 
     all_texts = [row[0] for row in rows]
-    full_text = "\n\n---\n\n".join(reversed(all_texts)) # Используем reversed для хронологического порядка
-
+    full_text = "\n\n---\n\n".join(reversed(all_texts))
+    
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 
@@ -267,52 +254,52 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 **Важное напоминание:** Я являюсь языковой моделью и не могу заменить профессионального психолога или психотерапевта. Этот анализ предназначен для саморефлексии. Если ты чувствуешь серьезное ухудшение состояния, пожалуйста, обратись к специалисту.
 
----
 """
     try:
         response = await gemini_model.generate_content_async(prompt)
         summary = response.text
     except Exception as e:
         logging.error(f"Ошибка при обращении к Gemini API: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при генерации отчета. Попробуйте позже.")
+        await update.message.reply_text("❌ Ошибка генерации отчета.")
         return
 
     final_message = f"**🗓️ Ваш персональный отчет**\n*(Период: {date_range_str})*\n\n{summary}"
+    if len(final_message) > 4096:
+        for i in range(0, len(final_message), 4096):
+            await update.message.reply_text(final_message[i:i+4096], parse_mode='Markdown')
+    else:
+        await update.message.reply_text(final_message, parse_mode='Markdown')
 
-    try:
-        if len(final_message) > 4096:
-            for i in range(0, len(final_message), 4096):
-                await update.message.reply_text(final_message[i:i+4096], parse_mode='Markdown')
-        else:
-            await update.message.reply_text(final_message, parse_mode='Markdown')
-    except Exception as e:
-        logging.error(f"Ошибка отправки сообщения в Telegram: {e}")
-        await update.message.reply_text("❌ Не удалось отправить отчет. Попробуйте запросить анализ снова.")
+# --- 5. ЗАПУСК ПРИЛОЖЕНИЯ ---
 
-
-# --- 4. ЗАПУСК БОТА ---
-
-def main():
-    """Настраивает и запускает бота для работы на сервере."""
+async def main():
+    """Настраивает и запускает телеграм-бота и веб-сервер."""
     if not all([gemini_model, deepgram]):
-        logging.critical("Запуск невозможен. Один из клиентов (Gemini или Deepgram) не был инициализирован.")
+        logging.critical("Запуск невозможен, один из API клиентов не инициализирован.")
         return
-
+        
     setup_database()
     
+    # Настраиваем приложение телеграм-бота
     application = Application.builder().token(BOT_TOKEN).build()
-
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE, handle_text_or_voice))
+    
+    # Устанавливаем вебхук для получения обновлений от Telegram
+    await application.bot.set_webhook(url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}")
 
-    # Запускаем вебхук без secret_token, так как это вызывало проблемы
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=8000,
-        url_path=BOT_TOKEN,
-        webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
-    )
+    # Запускаем Flask-сервер в отдельном потоке
+    flask_thread = threading.Thread(target=lambda: flask_app.run(host='0.0.0.0', port=PORT, debug=False))
+    flask_thread.daemon = True
+    flask_thread.start()
+    logging.info(f"Flask health check сервер запущен на порту {PORT}.")
+
+    # Запускаем основное приложение Telegram бота
+    async with application:
+        await application.start()
+        logging.info("Telegram бот запущен и готов к работе.")
+        await asyncio.Event().wait() # Держим основной поток живым
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
