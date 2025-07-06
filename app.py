@@ -1,7 +1,7 @@
 import os
 import json
 import gspread
-import locale # Импортируем для форматирования дат на русском
+import locale 
 import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, flash
 from datetime import datetime, timezone, timedelta
@@ -12,20 +12,20 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Устанавливаем русскую локаль для красивого вывода месяцев в датах
-# Если на сервере не будет этой локали, он использует стандартную
 try:
     locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 except locale.Error:
     print("Предупреждение: Локаль 'ru_RU.UTF-8' не найдена. Даты могут отображаться на английском.")
 
-
 # --- Получение ключей и ID из переменных окружения ---
+# ... (этот блок остается без изменений) ...
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 GOOGLE_CREDENTIALS_JSON_STR = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
+
 # --- ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
+# ... (этот блок остается без изменений) ...
 worksheet_thoughts = None
 worksheet_analyses = None
 
@@ -52,8 +52,9 @@ except Exception as e:
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
     gemini_model = None
 
-# --- ФУНКЦИИ-ПОМОЩНИКИ ---
 
+# --- ФУНКЦИИ-ПОМОЩНИКИ ---
+# ... (все функции-помощники остаются без изменений) ...
 def get_dynamic_greeting():
     hour = (datetime.now(timezone.utc).hour + 3) % 24 
     if 4 <= hour < 12: return "Доброе утро"
@@ -78,32 +79,22 @@ def get_new_thoughts(thoughts, last_analysis_time):
     return [t for t in thoughts if parser.parse(t.get('timestamp')) > last_analysis_time]
 
 def generate_analysis_report(thoughts_list, start_date_of_period):
-    """
-    Генерирует отчет, используя детализированный промпт пользователя.
-    """
+    # Ваш детализированный промпт остается здесь без изменений
     if not gemini_model: return "Модель анализа недоступна."
     if not thoughts_list: return "Нет новых мыслей для анализа."
 
-    # --- Подготовка переменных для промпта ---
     full_text = "\n\n---\n\n".join([t['content'] for t in thoughts_list])
-
-    # Если это первый анализ, дата начала - это дата самой старой мысли из текущей пачки
     if start_date_of_period is None:
         start_date_of_period = min(parser.parse(t['timestamp']) for t in thoughts_list)
 
     end_date_of_period = datetime.now(timezone.utc)
-    
-    # Форматируем даты для вывода
     date_format = "%d %B %Y"
     start_str = start_date_of_period.strftime(date_format)
     end_str = end_date_of_period.strftime(date_format)
     date_range_str = f"с {start_str} по {end_str}"
-    
-    # Считаем количество дней
     delta = end_date_of_period - start_date_of_period
     days_to_analyze = max(1, delta.days)
     
-    # Правильное склонение слова "день"
     if days_to_analyze % 10 == 1 and days_to_analyze % 100 != 11:
         day_word = 'день'
     elif 2 <= days_to_analyze % 10 <= 4 and (days_to_analyze % 100 < 10 or days_to_analyze % 100 >= 20):
@@ -111,7 +102,6 @@ def generate_analysis_report(thoughts_list, start_date_of_period):
     else:
         day_word = 'дней'
 
-    # --- ВАШ ДЕТАЛИЗИРОВАННЫЙ ПРОМПТ ---
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 
@@ -200,7 +190,9 @@ def generate_analysis_report(thoughts_list, start_date_of_period):
         print(f"Ошибка при генерации отчета Gemini: {e}")
         return f"Не удалось сгенерировать отчет. Ошибка API: {e}"
 
+
 # --- МАРШРУТЫ (URL) ПРИЛОЖЕНИЯ ---
+# ... (маршруты login, dashboard, thoughts_list остаются без изменений) ...
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -237,10 +229,7 @@ def dashboard(user_id):
             if new_thoughts:
                 new_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp')), reverse=True)
                 latest_thought_timestamp = new_thoughts[0]['timestamp']
-                
-                # Передаем в функцию дату начала периода для корректного расчета
                 analysis_result = generate_analysis_report(new_thoughts, last_analysis_time)
-                
                 try:
                     analysis_timestamp = datetime.now(timezone.utc).isoformat()
                     worksheet_analyses.append_row([str(user_id), analysis_timestamp, latest_thought_timestamp, analysis_result])
@@ -256,6 +245,17 @@ def thoughts_list(user_id):
     all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
     all_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return render_template('thoughts.html', user_id=user_id, thoughts=all_thoughts)
+
+
+# +++ НОВЫЙ МАРШРУТ ДЛЯ ИСТОРИИ АНАЛИЗОВ +++
+@app.route('/analyses/<user_id>')
+def analyses_list(user_id):
+    """Страница со списком всех прошлых анализов."""
+    all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
+    # Сортируем анализы от новых к старым
+    all_analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    return render_template('analyses.html', user_id=user_id, analyses=all_analyses)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
