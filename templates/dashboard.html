@@ -1,56 +1,50 @@
-<!-- dashboard.html -->
 {% extends "base.html" %}
 {% block title %}Главная{% endblock %}
 
 {% block content %}
 <main class="dashboard-container">
-    <!-- ... (ваш существующий код хедера и уведомлений) ... -->
+    <header class="dashboard-header">
+        <h1>{{ greeting }}, {{ user_id }}</h1>
+        <form action="{{ url_for('login') }}" method="get" style="display: inline;">
+             <button type="submit" class="logout-button">Выйти</button>
+        </form>
+    </header>
 
-    <!-- ... (ваша форма для мыслей) ... -->
-    
+    <!-- ... (код для уведомлений и формы мыслей остается здесь) ... -->
+
     <!-- +++ НОВАЯ КНОПКА ЗАПУСКА ТАЙМЕРА +++ -->
-    <button id="start-timer-btn" class="button button-main-action">🚀 Запустить таймер</button>
+    <section class="timer-launcher">
+        <button id="start-timer-btn" class="button button-large">
+            Запустить умный рабочий таймер
+        </button>
+    </section>
 
-
-    <!-- Навигация для ДЕСКТОПА -->
+    <!-- Навигация -->
     <nav class="desktop-nav">
-        <!-- ... (ваши существующие кнопки) ... -->
+        <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
+        <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
+        <!-- ... (остальные кнопки навигации) ... -->
     </nav>
 </main>
 
-<!-- +++ НОВОЕ МОДАЛЬНОЕ ОКНО ТАЙМЕРА (изначально скрыто) +++ -->
-<div id="timer-modal" class="modal-overlay" style="display: none;">
+<!-- +++ НОВОЕ МОДАЛЬНОЕ ОКНО +++ -->
+<div id="task-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
-        <!-- Этап 1: Ввод задачи -->
-        <div id="task-input-view">
-            <h2>Над чем вы будете работать?</h2>
+        <form id="task-form">
+            <h2>Над чем вы работаете?</h2>
+            <p>Это поможет группировать статистику.</p>
             <div class="input-group">
-                <input type="text" id="task-name-input" placeholder="Например, изучение Flask...">
+                <input type="text" id="task-name-input" name="task" placeholder="Например, 'Работа над проектом X'" required>
+                <input type="hidden" id="modal-user-id" value="{{ user_id }}">
             </div>
-            <button id="start-session-btn" class="button">Начать сессию (25 мин)</button>
-            <button id="close-modal-btn-1" class="button-link">Отмена</button>
-        </div>
-
-        <!-- Этап 2: Экран таймера -->
-        <div id="timer-view" style="display: none;">
-            <h3 id="timer-task-name"></h3>
-            <div class="timer-circle-container">
-                <div class="timer-circle-progress"></div>
-                <div id="timer-display" class="timer-text">25:00</div>
-            </div>
-            <div class="timer-controls">
-                <button id="pause-resume-btn" class="icon-button">⏸️</button>
-                <button id="sound-toggle-btn" class="icon-button">🔊</button>
-                <a href="{{ url_for('dynamics_page', user_id=user_id) }}" class="icon-button">📊</a>
-            </div>
-            <button id="finish-session-btn" class="button button-secondary">Завершить и сохранить</button>
-        </div>
+            <button type="submit" class="button">Начать сессию</button>
+            <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
+        </form>
     </div>
 </div>
 
-<!-- Навигация для МОБИЛЬНЫХ -->
-<!-- ... (ваш футер) ... -->
-
+<!-- Мобильная навигация, если нужна -->
+{% endblock %}
 <!-- Подключаем скрипт таймера в конце -->
 <script src="{{ url_for('static', filename='js/timer.js') }}"></script>
 {% endblock %}
