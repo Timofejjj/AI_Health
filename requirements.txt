@@ -1,6 +1,0 @@
-python-telegram-bot[ext]
-google-generativeai
-deepgram-sdk
-fastapi
-gunicorn
-uvicorn
