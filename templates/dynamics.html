@@ -3,11 +3,17 @@
 
 {% block content %}
 <div class="dynamics-page" data-user-id="{{ user_id }}">
+    
+    <!-- Обновленный заголовок с кнопкой "К сессии" -->
     <header class="dashboard-header">
         <h1>Динамика работы</h1>
-        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
+        <div>
+            <a href="#" id="back-to-timer-from-dynamics" class="button button-secondary">К сессии</a>
+            <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button" style="margin-left: 10px;">← На главную</a>
+        </div>
     </header>
 
+    <!-- Секция с календарями -->
     <section class="stats-section">
         <h2>Активность по задачам</h2>
         <div id="calendars-container" class="calendars-grid">
@@ -16,6 +22,7 @@
         </div>
     </section>
 
+    <!-- Секция с графиком по дням -->
     <section class="stats-section">
         <h2>Активность по дням (минуты)</h2>
         <div class="chart-filters">
@@ -29,11 +36,13 @@
         </div>
     </section>
 
+    <!-- Секция с графиком по часам -->
     <section class="stats-section">
         <h2>Продуктивность по часам (минуты)</h2>
         <div class="chart-container">
             <canvas id="hourlyActivityChart"></canvas>
         </div>
     </section>
+    
 </div>
 {% endblock %}
