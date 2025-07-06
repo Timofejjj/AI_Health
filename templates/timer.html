@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Таймер{% endblock %}
+
+{% block content %}
+<div class="timer-page" 
+     data-user-id="{{ user_id }}" 
+     data-task-name="{{ task_name }}">
+    <header class="timer-header">
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
+        <h1>{{ task_name }}</h1>
+        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary">Динамика</a>
+    </header>
+
+    <div class="timer-container">
+        <div class="timer-circle">
+            <svg class="timer-progress" width="300" height="300" viewBox="0 0 120 120">
+                <circle class="progress-background" cx="60" cy="60" r="54" stroke-width="8"></circle>
+                <circle class="progress-bar" cx="60" cy="60" r="54" stroke-width="8" transform="rotate(-90 60 60)"></circle>
+            </svg>
+            <div id="time-display" class="time-display">25:00</div>
+        </div>
+    </div>
+
+    <div class="time-presets">
+        <button class="time-preset-btn" data-minutes="25">25 мин</button>
+        <button class="time-preset-btn" data-minutes="45">45 мин</button>
+        <button class="time-preset-btn" data-minutes="60">60 мин</button>
+    </div>
+
+    <div class="timer-controls">
+        <button id="start-pause-btn" class="control-btn">Старт</button>
+        <button id="mute-btn" class="control-btn">Звук</button>
+        <button id="stop-btn" class="control-btn">Завершить</button>
+    </div>
+</div>
+{% endblock %}
