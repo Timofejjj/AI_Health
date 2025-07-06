@@ -37,6 +37,8 @@
     <!-- Навигация для ДЕСКТОПА -->
     <nav class="desktop-nav">
         <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
+        <!-- +++ НОВАЯ КНОПКА +++ -->
+        <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
         <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
             <input type="hidden" name="action" value="analyze">
             <button type="submit" class="button button-secondary">Анализ последних мыслей</button>
@@ -55,5 +57,9 @@
             <span>Анализ</span>
         </button>
     </form>
+    <!-- +++ НОВАЯ КНОПКА +++ -->
+    <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="nav-button">
+        <span>История</span>
+    </a>
 </footer>
 {% endblock %}
