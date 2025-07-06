@@ -1,14 +1,24 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- ЛОГИКА ДЛЯ DASHBOARD (МОДАЛЬНОЕ ОКНО) ---
-    const startTimerBtn = document.getElementById('start-timer-btn');
+    // Глобальная проверка состояния таймера при загрузке любой страницы
+    checkGlobalTimerState();
+
+    // --- ЛОГИКА ДЛЯ ГЛАВНОЙ СТРАНИЦЫ (DASHBOARD) ---
+    const timerFab = document.getElementById('timer-fab');
     const modal = document.getElementById('task-modal');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const taskForm = document.getElementById('task-form');
 
-    if (startTimerBtn) {
-        startTimerBtn.addEventListener('click', () => {
-            modal.style.display = 'flex';
+    if (timerFab) {
+        timerFab.addEventListener('click', () => {
+            const timerState = getTimerState();
+            if (timerState && timerState.isActive) {
+                // Если таймер активен, переходим на его страницу
+                window.location.href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
+            } else {
+                // Иначе показываем модальное окно для новой сессии
+                modal.style.display = 'flex';
+            }
         });
     }
 
@@ -19,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     if (modal) {
+        // Закрытие модального окна по клику на фон
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                  modal.style.display = 'none';
@@ -38,21 +49,88 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- ЛОГИКА ДЛЯ СТРАНИЦЫ ТАЙМЕРА ---
-    const timerPage = document.querySelector('.timer-page');
-    if (timerPage) {
+    if (document.querySelector('.timer-page')) {
         initTimer();
     }
     
     // --- ЛОГИКА ДЛЯ СТРАНИЦЫ ДИНАМИКИ ---
-    const dynamicsPage = document.querySelector('.dynamics-page');
-    if (dynamicsPage) {
+    if (document.querySelector('.dynamics-page')) {
         loadDynamicsData();
+        const backToTimerBtn = document.getElementById('back-to-timer-from-dynamics');
+        if (backToTimerBtn) {
+            const timerState = getTimerState();
+            if (timerState && timerState.isActive) {
+                backToTimerBtn.style.display = 'inline-block'; // Показываем кнопку
+                backToTimerBtn.href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
+            } else {
+                backToTimerBtn.style.display = 'none'; // Скрываем кнопку, если таймер не активен
+            }
+        }
     }
 });
 
 
 // =======================================================
-//                    КЛАСС ТАЙМЕРА
+//        УПРАВЛЕНИЕ ГЛОБАЛЬНЫМ СОСТОЯНИЕМ ТАЙМЕРА
+// =======================================================
+const TIMER_STATE_KEY = 'timerState';
+let globalTimerInterval = null;
+
+function getTimerState() {
+    const state = localStorage.getItem(TIMER_STATE_KEY);
+    return state ? JSON.parse(state) : null;
+}
+
+function setTimerState(state) {
+    localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
+}
+
+function clearTimerState() {
+    localStorage.removeItem(TIMER_STATE_KEY);
+    if (globalTimerInterval) clearInterval(globalTimerInterval);
+    const persistentBar = document.getElementById('persistent-timer-bar');
+    if (persistentBar) persistentBar.style.display = 'none';
+}
+
+function checkGlobalTimerState() {
+    const timerState = getTimerState();
+    const persistentBar = document.getElementById('persistent-timer-bar');
+    const timerPage = document.querySelector('.timer-page');
+
+    // Показываем панель, только если таймер активен И мы НЕ на странице самого таймера
+    if (timerState && timerState.isActive && !timerPage) {
+        persistentBar.style.display = 'flex';
+        const taskNameEl = persistentBar.querySelector('.task-name');
+        const timeDisplayEl = persistentBar.querySelector('.time-display');
+        const returnBtn = document.getElementById('return-to-timer-btn');
+
+        taskNameEl.textContent = timerState.taskName;
+        returnBtn.href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
+        
+        if (globalTimerInterval) clearInterval(globalTimerInterval);
+
+        const updateBar = () => {
+            const elapsed = Math.floor((new Date() - new Date(timerState.sessionStartTime)) / 1000);
+            const remaining = timerState.totalSeconds - elapsed;
+            
+            const isOvertime = remaining < 0;
+            const secondsToDisplay = Math.abs(remaining);
+            const minutes = Math.floor(secondsToDisplay / 60);
+            const seconds = secondsToDisplay % 60;
+            timeDisplayEl.textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
+        updateBar(); // Обновляем сразу
+        globalTimerInterval = setInterval(updateBar, 1000);
+
+    } else {
+        if(persistentBar) persistentBar.style.display = 'none';
+        if (globalTimerInterval) clearInterval(globalTimerInterval);
+    }
+}
+
+
+// =======================================================
+//                    ЛОГИКА ТАЙМЕРА
 // =======================================================
 function initTimer() {
     const timerPage = document.querySelector('.timer-page');
@@ -67,16 +145,16 @@ function initTimer() {
     progressBar.style.strokeDasharray = `${circumference} ${circumference}`;
     progressBar.style.strokeDashoffset = circumference;
 
+    const userId = timerPage.dataset.userId;
+    const taskName = timerPage.dataset.taskName;
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+    
+    let timerState = {};
     let totalSeconds = 25 * 60;
     let remainingSeconds = totalSeconds;
     let timerInterval = null;
     let isRunning = false;
     let isMuted = false;
-    let startTime = null;
-
-    const userId = timerPage.dataset.userId;
-    const taskName = timerPage.dataset.taskName;
-    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
 
     function setProgress(percent) {
         const offset = circumference - (percent / 100) * circumference;
@@ -98,15 +176,28 @@ function initTimer() {
         if (isRunning) return;
         isRunning = true;
         startPauseBtn.textContent = 'Пауза';
-        startTime = startTime || new Date().toISOString(); // Устанавливаем время старта только в первый раз
+
+        const now = new Date();
+        if (!timerState.isActive) { // Начало новой сессии
+             timerState = {
+                isActive: true,
+                userId: userId,
+                taskName: taskName,
+                totalSeconds: totalSeconds,
+                sessionStartTime: now.toISOString(),
+            };
+        }
+        setTimerState(timerState);
         
         timerInterval = setInterval(() => {
-            remainingSeconds--;
+            const elapsed = Math.floor((new Date() - new Date(timerState.sessionStartTime)) / 1000);
+            remainingSeconds = totalSeconds - elapsed;
+
             if (remainingSeconds >= 0) {
                 const percent = ((totalSeconds - remainingSeconds) / totalSeconds) * 100;
                 setProgress(Math.min(100, percent));
             } else {
-                 setProgress(100); // Полный круг в овертайме
+                 setProgress(100);
             }
             
             if (remainingSeconds === -1 && !isMuted) {
@@ -121,42 +212,40 @@ function initTimer() {
         isRunning = false;
         startPauseBtn.textContent = 'Старт';
         clearInterval(timerInterval);
+        
+        // При паузе просто удаляем состояние, т.к. при старте оно создастся заново с верным временем
+        clearTimerState(); 
+        timerState = {};
     }
     
     function stopTimer() {
-        logSession();
+        const state = getTimerState();
+        if (state && state.isActive) {
+            logSession(state); // Логируем, если сессия была активна
+        }
+        clearTimerState();
         window.location.href = `/dashboard/${userId}`;
     }
 
-    async function logSession() {
-        if (!startTime) return; // Не логируем, если таймер не был запущен
-
-        pauseTimer();
-        const endTime = new Date().toISOString();
-        
+    async function logSession(stateToLog) {
         try {
             await fetch('/api/log_session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    user_id: userId,
-                    task_name: taskName,
-                    start_time: startTime,
-                    end_time: endTime
+                    user_id: stateToLog.userId,
+                    task_name: stateToLog.taskName,
+                    start_time: stateToLog.sessionStartTime,
+                    end_time: new Date().toISOString()
                 })
             });
         } catch (error) {
             console.error('Failed to log session:', error);
-        } finally {
-            startTime = null; // Сброс для следующей сессии
         }
     }
     
-    // Логирование при закрытии/перезагрузке страницы
-    window.addEventListener('beforeunload', (e) => {
-        if(isRunning) {
-            logSession();
-        }
+    window.addEventListener('beforeunload', () => {
+        // Ничего не делаем, localStorage сохранит состояние
     });
 
     startPauseBtn.addEventListener('click', () => {
@@ -171,12 +260,12 @@ function initTimer() {
 
     muteBtn.addEventListener('click', () => {
         isMuted = !isMuted;
-        muteBtn.style.opacity = isMuted ? 0.5 : 1.0;
+        muteBtn.classList.toggle('muted', isMuted);
     });
 
     document.querySelectorAll('.time-preset-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (isRunning) return; // Нельзя менять время во время работы
+            if (isRunning) return;
             totalSeconds = parseInt(btn.dataset.minutes) * 60;
             remainingSeconds = totalSeconds;
             setProgress(0);
@@ -184,8 +273,21 @@ function initTimer() {
         });
     });
 
-    // Initial setup
-    updateDisplay();
+    // --- Логика при загрузке страницы таймера ---
+    function initializeOnLoad() {
+        const state = getTimerState();
+        // Если есть активное состояние, соответствующее этой странице, продолжаем его
+        if (state && state.isActive && state.taskName === taskName && state.userId === userId) {
+            timerState = state;
+            totalSeconds = state.totalSeconds;
+            startTimer();
+        } else {
+            // Иначе это новая сессия, просто обновляем дисплей
+            clearTimerState(); // Очищаем на всякий случай любое старое состояние
+            updateDisplay();
+        }
+    }
+    initializeOnLoad();
 }
 
 
@@ -202,7 +304,7 @@ async function loadDynamicsData() {
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
 
-        calendarsContainer.innerHTML = ''; // Очищаем 'Загрузка...'
+        calendarsContainer.innerHTML = '';
         renderCalendars(data.calendars, calendarsContainer);
         renderDailyChart(data.activity_by_day);
         renderHourlyChart(data.activity_by_hour);
@@ -232,8 +334,8 @@ function renderCalendars(calendarsData, container) {
         daysOfWeek.forEach(day => html += `<div class="calendar-day header">${day}</div>`);
 
         const date = new Date(today.getFullYear(), today.getMonth(), 1);
-        let firstDayOffset = date.getDay() - 1; // 0=Mon, 6=Sun
-        if (firstDayOffset === -1) firstDayOffset = 6; // Sunday fix
+        let firstDayOffset = date.getDay() - 1;
+        if (firstDayOffset === -1) firstDayOffset = 6;
 
         for(let i=0; i < firstDayOffset; i++) {
             html += `<div class="calendar-day"></div>`;
@@ -264,9 +366,9 @@ function renderDailyChart(chartData) {
         if(dailyChartInstance) {
             dailyChartInstance.destroy();
         }
-
-        const labels = allLabels.slice(-days);
-        const data = allData.slice(-days);
+        // Убедимся, что данные есть, чтобы slice не вызвал ошибку
+        const labels = allLabels ? allLabels.slice(-days) : [];
+        const data = allData ? allData.slice(-days) : [];
 
         dailyChartInstance = new Chart(ctx, {
             type: 'bar',
@@ -282,10 +384,7 @@ function renderDailyChart(chartData) {
             },
             options: {
                 scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: 'day' }
-                    },
+                    x: { type: 'time', time: { unit: 'day' } },
                     y: { beginAtZero: true }
                 },
                 plugins: { legend: { display: false } }
@@ -293,8 +392,8 @@ function renderDailyChart(chartData) {
         });
     }
 
-    // Initial render for 7 days
-    drawChart(7); 
+    const initialRange = 7;
+    drawChart(initialRange); 
     
     document.querySelectorAll('.chart-filters .filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
