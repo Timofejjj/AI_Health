@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дневник - {{ user_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="main-container">
+        <!-- Левая колонка для ввода и мыслей -->
+        <div class="container">
+            <h1>Дневник мыслей</h1>
+            <h2>ID пользователя: {{ user_id }}</h2>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="notification {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+                <div class="input-group">
+                    <label for="thought">Ваша новая мысль:</label>
+                    <textarea id="thought" name="thought" required></textarea>
+                </div>
+                <button type="submit" class="button">Сохранить мысль</button>
+            </form>
+            
+            <form method="post" action="{{ url_for('analyze', user_id=user_id) }}" style="margin-top: 10px;">
+                <button type="submit" class="button button-secondary">Проанализировать новые мысли</button>
+            </form>
+
+            <div class="thought-list">
+                <h3>Все сохраненные мысли</h3>
+                {% if thoughts %}
+                    {% for thought in thoughts %}
+                    <div class="list-item">
+                        <div class="meta">{{ thought.timestamp }}</div>
+                        <div class="content">{{ thought.content }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>У вас пока нет сохраненных мыслей.</p>
+                {% endif %}
+            </div>
+             <a href="/" class="button button-secondary" style="margin-top: 20px;">Выйти</a>
+        </div>
+
+        <!-- Правая колонка для анализов -->
+        <div class="container">
+            <h1>История анализов</h1>
+            <div class="analysis-list">
+                {% if analyses %}
+                    {% for analysis in analyses %}
+                    <div class="list-item">
+                        <div class="meta">
+                            Отчет от: {{ analysis.analysis_timestamp }} <br>
+                            Включает мысли до: {{ analysis.thoughts_analyzed_until }}
+                        </div>
+                        <div class="content">{{ analysis.report_content }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>У вас еще нет ни одного анализа.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

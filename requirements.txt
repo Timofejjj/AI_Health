@@ -1,0 +1,6 @@
+Flask
+gspread
+google-auth-oauthlib
+google-generativeai
+gunicorn
+python-dateutil

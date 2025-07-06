@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - HealthAI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container" style="max-width: 500px; margin-top: 50px;">
+        <h1>HealthAI</h1>
+        <h2>Ваш личный дневник мыслей</h2>
+        <div class="input-group">
+            <label for="userId">Введите ваш уникальный ID</label>
+            <input type="text" id="userId" placeholder="Например, 123456789">
+        </div>
+        <button class="button" onclick="goToDashboard()">Войти</button>
+    </div>
+    <script>
+        function goToDashboard() {
+            const userId = document.getElementById('userId').value;
+            if (userId) {
+                window.location.href = '/dashboard/' + userId;
+            } else {
+                alert('Пожалуйста, введите ID.');
+            }
+        }
+    </script>
+</body>
+</html>
