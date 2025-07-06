@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Динамика Работы{% endblock %}
+
+{% block content %}
+<div class="dynamics-page" data-user-id="{{ user_id }}">
+    <header class="dashboard-header">
+        <h1>Динамика работы</h1>
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
+    </header>
+
+    <section class="stats-section">
+        <h2>Активность по задачам</h2>
+        <div id="calendars-container" class="calendars-grid">
+            <!-- Календари будут вставлены сюда с помощью JS -->
+            <p>Загрузка данных...</p>
+        </div>
+    </section>
+
+    <section class="stats-section">
+        <h2>Активность по дням (минуты)</h2>
+        <div class="chart-filters">
+            <button class="filter-btn active" data-range="7">Неделя</button>
+            <button class="filter-btn" data-range="30">Месяц</button>
+            <button class="filter-btn" data-range="90">3 месяца</button>
+            <button class="filter-btn" data-range="365">Год</button>
+        </div>
+        <div class="chart-container">
+            <canvas id="dailyActivityChart"></canvas>
+        </div>
+    </section>
+
+    <section class="stats-section">
+        <h2>Продуктивность по часам (минуты)</h2>
+        <div class="chart-container">
+            <canvas id="hourlyActivityChart"></canvas>
+        </div>
+    </section>
+</div>
+{% endblock %}
