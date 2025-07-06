@@ -10,38 +10,59 @@
         </form>
     </header>
 
-    <!-- ... (код для уведомлений и формы мыслей остается здесь) ... -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="notification {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-    <!-- +++ НОВАЯ КНОПКА ЗАПУСКА ТАЙМЕРА +++ -->
-    <section class="timer-launcher">
-        <button id="start-timer-btn" class="button button-large">
-            Запустить умный рабочий таймер
-        </button>
+    {% if analysis_result %}
+    <section class="analysis-result">
+        <h2>Результат анализа</h2>
+        <p>{{ analysis_result }}</p>
+    </section>
+    {% endif %}
+
+    <!-- +++ ВОЗВРАЩЕННАЯ ФОРМА ДЛЯ МЫСЛЕЙ +++ -->
+    <section class="thought-form">
+        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+            <input type="hidden" name="action" value="save_thought">
+            <div class="input-group">
+                <label for="thought">Что у вас на уме?</label>
+                <textarea id="thought" name="thought" placeholder="Напишите свою мысль здесь..." required></textarea>
+            </div>
+            <button type="submit" class="button">Отправить</button>
+        </form>
     </section>
 
-    <!-- Навигация -->
+    <!-- +++ ВОЗВРАЩЕННАЯ НАВИГАЦИЯ С КНОПКОЙ АНАЛИЗА +++ -->
     <nav class="desktop-nav">
         <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
         <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
-        <!-- ... (остальные кнопки навигации) ... -->
+        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+            <input type="hidden" name="action" value="analyze">
+            <button type="submit" class="button button-secondary">Анализ последних мыслей</button>
+        </form>
     </nav>
 </main>
 
-<!-- +++ НОВОЕ МОДАЛЬНОЕ ОКНО +++ -->
+<!-- +++ МОДАЛЬНОЕ ОКНО ДЛЯ ЗАПУСКА ТАЙМЕРА (логика та же) +++ -->
 <div id="task-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <form id="task-form">
             <h2>Над чем вы работаете?</h2>
-            <p>Это поможет группировать статистику.</p>
-            <div class="input-group">
-                <input type="text" id="task-name-input" name="task" placeholder="Например, 'Работа над проектом X'" required>
-                <input type="hidden" id="modal-user-id" value="{{ user_id }}">
-            </div>
+            <input type="text" id="task-name-input" name="task" placeholder="Например, 'Работа над проектом X'" required>
+            <input type="hidden" id="modal-user-id" value="{{ user_id }}">
             <button type="submit" class="button">Начать сессию</button>
             <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
         </form>
     </div>
 </div>
 
-<!-- Мобильная навигация, если нужна -->
+<!-- +++ ПЛАВАЮЩАЯ КНОПКА (FAB) ДЛЯ ЗАПУСКА ТАЙМЕРА +++ -->
+<button id="timer-fab" class="timer-fab" title="Запустить таймер">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+</button>
 {% endblock %}
