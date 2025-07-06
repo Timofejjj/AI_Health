@@ -4,3 +4,4 @@ google-auth-oauthlib
 google-generativeai
 gunicorn
 python-dateutil
+pandas
