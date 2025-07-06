@@ -1,53 +1,49 @@
 import os
 import json
 import gspread
+import locale # Импортируем для форматирования дат на русском
 import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, flash
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil import parser
-from google.oauth2.service_account import Credentials # Важный новый импорт
+from google.oauth2.service_account import Credentials
 
 # --- КОНФИГУРАЦИЯ ---
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# --- Получение ключей и ID из переменных окружения Railway
+# Устанавливаем русскую локаль для красивого вывода месяцев в датах
+# Если на сервере не будет этой локали, он использует стандартную
+try:
+    locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
+except locale.Error:
+    print("Предупреждение: Локаль 'ru_RU.UTF-8' не найдена. Даты могут отображаться на английском.")
+
+
+# --- Получение ключей и ID из переменных окружения ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
-# Эта переменная будет содержать ВЕСЬ текст из вашего файла credentials.json
 GOOGLE_CREDENTIALS_JSON_STR = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 # --- ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
 worksheet_thoughts = None
 worksheet_analyses = None
 
-# НОВЫЙ, УНИВЕРСАЛЬНЫЙ СПОСОБ ИНИЦИАЛИЗАЦИИ GSPREAD ДЛЯ RAILWAY
 try:
     if not GOOGLE_CREDENTIALS_JSON_STR:
         raise ValueError("Переменная окружения GOOGLE_CREDENTIALS_JSON не установлена.")
     
-    # 1. Превращаем строку из переменной окружения обратно в словарь Python
     creds_info = json.loads(GOOGLE_CREDENTIALS_JSON_STR)
-    
-    # 2. Определяем права доступа, которые нужны нашему приложению
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # 3. Создаем объект учетных данных из словаря
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-    
-    # 4. Авторизуем gspread с помощью этих учетных данных
     gc = gspread.authorize(creds)
-    
-    # 5. Открываем нашу таблицу и листы
     spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
     worksheet_thoughts = spreadsheet.worksheet("thoughts")
     worksheet_analyses = spreadsheet.worksheet("analyses")
-    print("✅ Успешное подключение к Google Sheets через JSON из переменной окружения.")
-
+    print("✅ Успешное подключение к Google Sheets.")
 except Exception as e:
     print(f"❌ ОШИБКА: Не удалось подключиться к Google Sheets: {e}")
 
-# Инициализация Gemini остается без изменений
 try:
     genai.configure(api_key=GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -56,49 +52,70 @@ except Exception as e:
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
     gemini_model = None
 
-# --- ФУНКЦИИ-ПОМОЩНИКИ (без изменений) ---
+# --- ФУНКЦИИ-ПОМОЩНИКИ ---
+
+def get_dynamic_greeting():
+    hour = (datetime.now(timezone.utc).hour + 3) % 24 
+    if 4 <= hour < 12: return "Доброе утро"
+    if 12 <= hour < 17: return "Добрый день"
+    if 17 <= hour < 23: return "Добрый вечер"
+    return "Доброй ночи"
 
 def get_data_from_sheet(worksheet, user_id):
-    """Универсальная функция для получения данных пользователя из листа."""
     if not worksheet: return []
     try:
         all_records = worksheet.get_all_records()
-        user_records = [row for row in all_records if str(row.get('user_id')) == str(user_id)]
-        return user_records
-    except Exception as e:
-        print(f"Ошибка при чтении из листа '{worksheet.title}': {e}")
-        return []
+        return [row for row in all_records if str(row.get('user_id')) == str(user_id)]
+    except Exception: return []
 
 def get_last_analysis_timestamp(analyses):
-    """Находит временную метку последней проанализированной мысли."""
-    if not analyses:
-        return None
+    if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    last_analysis = analyses[0]
-    return parser.parse(last_analysis['thoughts_analyzed_until'])
+    return parser.parse(analyses[0]['thoughts_analyzed_until'])
 
 def get_new_thoughts(thoughts, last_analysis_time):
-    """Фильтрует мысли, которые новее, чем последний анализ."""
-    if last_analysis_time is None:
-        return thoughts
-    
-    new_thoughts_list = [
-        t for t in thoughts 
-        if parser.parse(t.get('timestamp')) > last_analysis_time
-    ]
-    return new_thoughts_list
+    if last_analysis_time is None: return thoughts
+    return [t for t in thoughts if parser.parse(t.get('timestamp')) > last_analysis_time]
 
-def generate_analysis_report(thoughts_list):
-    """Генерирует отчет по списку мыслей."""
-    if not gemini_model or not thoughts_list:
-        return "Недостаточно данных или модель не настроена."
+def generate_analysis_report(thoughts_list, start_date_of_period):
+    """
+    Генерирует отчет, используя детализированный промпт пользователя.
+    """
+    if not gemini_model: return "Модель анализа недоступна."
+    if not thoughts_list: return "Нет новых мыслей для анализа."
 
+    # --- Подготовка переменных для промпта ---
     full_text = "\n\n---\n\n".join([t['content'] for t in thoughts_list])
+
+    # Если это первый анализ, дата начала - это дата самой старой мысли из текущей пачки
+    if start_date_of_period is None:
+        start_date_of_period = min(parser.parse(t['timestamp']) for t in thoughts_list)
+
+    end_date_of_period = datetime.now(timezone.utc)
     
+    # Форматируем даты для вывода
+    date_format = "%d %B %Y"
+    start_str = start_date_of_period.strftime(date_format)
+    end_str = end_date_of_period.strftime(date_format)
+    date_range_str = f"с {start_str} по {end_str}"
+    
+    # Считаем количество дней
+    delta = end_date_of_period - start_date_of_period
+    days_to_analyze = max(1, delta.days)
+    
+    # Правильное склонение слова "день"
+    if days_to_analyze % 10 == 1 and days_to_analyze % 100 != 11:
+        day_word = 'день'
+    elif 2 <= days_to_analyze % 10 <= 4 and (days_to_analyze % 100 < 10 or days_to_analyze % 100 >= 20):
+        day_word = 'дня'
+    else:
+        day_word = 'дней'
+
+    # --- ВАШ ДЕТАЛИЗИРОВАННЫЙ ПРОМПТ ---
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 
-Ты — мой личный когнитивный аналитик и стратегический коуч. Твоя главная задача — провести глубокий, многоуровневый анализ моих мыслей, зафиксированных в виде текстовых и голосовых сообщений за {DAYS_TO_ANALYZE} {'день' if DAYS_TO_ANALYZE == 1 else 'дней'}. Цель — помочь мне понять себя, выявить скрытые закономерности, отследить психологическое состояние и получить практические рекомендации.
+Ты — мой личный когнитивный аналитик и стратегический коуч. Твоя главная задача — провести глубокий, многоуровневый анализ моих мыслей, зафиксированных в виде текстовых сообщений за последние {days_to_analyze} {day_word}. Цель — помочь мне понять себя, выявить скрытые закономерности, отследить психологическое состояние и получить практические рекомендации.
 
 # ВХОДНЫЕ ДАННЫЕ
 
@@ -111,22 +128,22 @@ def generate_analysis_report(thoughts_list):
 
 Действуй строго по следующим инструкциям. Твой ответ должен быть структурирован в соответствии с форматом, указанным в конце.
 
-1.  Выявление скрытых связей и паттернов:
+1.  **Выявление скрытых связей и паттернов:**
     *   Анализируй, как темы, поднятые в начале периода, влияют на мысли в конце.
     *   Находи связи между моими проблемами и идеями. Например, не является ли какая-то идея попыткой подсознательно решить другую проблему?
     *   Отмечай повторяющиеся слова, метафоры, образы или темы в течение всего периода.
 
-2.  Структурный разбор мыслей:
+2.  **Структурный разбор мыслей:**
     *   Четко раздели все мои высказывания на четыре категории:
         *   Проблемы и Тревоги: Все, что вызывает у меня беспокойство, страх, недовольство, фрустрацию.
         *   Идеи и Озарения: Любые новые мысли, креативные решения, планы, гипотезы.
         *   Собственные доводы и Убеждения: Мои аргументы, объяснения своей позиции, ценности, которые я транслирую.
         *   Факты и Наблюдения: Объективные констатации, описания событий без эмоциональной окраски.
 
-3.  Анализ направленности мышления:
+3.  **Анализ направленности мышления:**
     *   Оцени общий вектор моих мыслей за период. Он был: конструктивным, деструктивным, стагнирующим, сфокусированным, рассеянным, оптимистичным, пессимистичным? Обоснуй свой вывод.
 
-4.  Проактивный коучинг и прогнозирование (САМАЯ ВАЖНАЯ ЧАСТЬ):
+4.  **Проактивный коучинг и прогнозирование (САМАЯ ВАЖНАЯ ЧАСТЬ):**
     *   Советы: Для каждой выявленной «Проблемы» предложи 1-2 конкретных, действенных совета по ее решению или изменению моего отношения к ней.
     *   Фокус внимания: Укажи, на какие мысли, идеи или паттерны мне стоит обратить особое внимание в ближайшие дни.
     *   Мониторинг состояния (Критически важно): Замечай признаки ухудшения моего состояния (например, рост тревожности, апатии, самокритики, безнадежности). Формулируй это мягко, но прямо. Например: «Я замечаю, что за эту неделю риторика самообвинения усилилась».
@@ -134,16 +151,16 @@ def generate_analysis_report(thoughts_list):
 
 # СТРУКТУРА ОТВЕТА
 
-Предоставь свой анализ в строго следующем формате, используя Markdown для форматирования. Замени [ДАТА] на фактический диапазон дат.
+Предоставь свой анализ в строго следующем формате, используя Markdown для форматирования.
 
 ---
 
 ### Отчет по когнитивному анализу за {date_range_str}
 
-1. Краткое резюме и главная тема периода:
+1. **Краткое резюме и главная тема периода:**
 *(В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода.)*
 
-2. Структурный анализ мыслей:
+2. **Структурный анализ мыслей:**
 *   Проблемы и Тревоги:
     *   - [Проблема 1]
     *   - [Проблема 2]
@@ -156,15 +173,15 @@ def generate_analysis_report(thoughts_list):
 *   Факты и Наблюдения:
     *   - [Факт 1]
 
-3. Скрытые связи и паттерны:
+3. **Скрытые связи и паттерны:**
 *   Связь 1: *(Например: «Утренняя тревога по поводу проекта Х напрямую связана с вечерней идеей о смене карьеры. Это защитный механизм.»)*
 *   Повторяющийся паттерн: *(Например: «В течение дня 5 раз повторяется слово "должен", что указывает на сильное внутреннее давление.»)*
 
-4. Направленность мышления:
+4. **Направленность мышления:**
 *   Общий вектор: [Конструктивный/Деструктивный/и т.д.]
 *   Обоснование: *(Почему ты так считаешь, с примерами из текста.)*
 
-5. Рекомендации, предупреждения и прогноз:
+5. **Рекомендации, предупреждения и прогноз:**
 *   Советы по решению проблем:
     *   По Проблеме 1: [Твой совет]
     *   По Проблеме 2: [Твой совет]
@@ -181,70 +198,64 @@ def generate_analysis_report(thoughts_list):
         return response.text
     except Exception as e:
         print(f"Ошибка при генерации отчета Gemini: {e}")
-        return f"Не удалось сгенерировать отчет. Ошибка: {e}"
+        return f"Не удалось сгенерировать отчет. Ошибка API: {e}"
 
-# --- МАРШРУТЫ (URL) ВЕБ-ПРИЛОЖЕНИЯ (без изменений) ---
+# --- МАРШРУТЫ (URL) ПРИЛОЖЕНИЯ ---
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user_id = request.form.get('user_id')
+        if user_id:
+            return redirect(url_for('dashboard', user_id=user_id))
+    return render_template('login.html')
 
 @app.route('/dashboard/<user_id>', methods=['GET', 'POST'])
 def dashboard(user_id):
-    if not worksheet_thoughts or not worksheet_analyses:
-        flash("Сервис временно недоступен: нет подключения к базе данных.", "error")
-        return render_template('dashboard.html', user_id=user_id, thoughts=[], analyses=[])
+    greeting = get_dynamic_greeting()
+    analysis_result = None
 
     if request.method == 'POST':
-        thought_content = request.form.get('thought')
-        if thought_content:
-            try:
-                timestamp = datetime.now(timezone.utc).isoformat()
-                worksheet_thoughts.append_row([str(user_id), timestamp, thought_content])
-                flash("Мысль успешно сохранена!", "success")
-            except Exception as e:
-                flash(f"Не удалось сохранить мысль: {e}", "error")
-        return redirect(url_for('dashboard', user_id=user_id))
+        action = request.form.get('action')
+        if action == 'save_thought':
+            thought_content = request.form.get('thought')
+            if thought_content:
+                try:
+                    timestamp = datetime.now(timezone.utc).isoformat()
+                    worksheet_thoughts.append_row([str(user_id), timestamp, thought_content])
+                    flash("Мысль сохранена!", "success")
+                except Exception as e:
+                    flash(f"Ошибка сохранения: {e}", "error")
+            return redirect(url_for('dashboard', user_id=user_id))
 
-    thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-    analyses = get_data_from_sheet(worksheet_analyses, user_id)
-    
-    thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    
-    return render_template('dashboard.html', user_id=user_id, thoughts=thoughts, analyses=analyses)
+        elif action == 'analyze':
+            all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
+            all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
+            last_analysis_time = get_last_analysis_timestamp(all_analyses)
+            new_thoughts = get_new_thoughts(all_thoughts, last_analysis_time)
 
-@app.route('/analyze/<user_id>', methods=['POST'])
-def analyze(user_id):
-    if not all([worksheet_thoughts, worksheet_analyses, gemini_model]):
-        flash("Сервис анализа недоступен.", "error")
-        return redirect(url_for('dashboard', user_id=user_id))
+            if new_thoughts:
+                new_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp')), reverse=True)
+                latest_thought_timestamp = new_thoughts[0]['timestamp']
+                
+                # Передаем в функцию дату начала периода для корректного расчета
+                analysis_result = generate_analysis_report(new_thoughts, last_analysis_time)
+                
+                try:
+                    analysis_timestamp = datetime.now(timezone.utc).isoformat()
+                    worksheet_analyses.append_row([str(user_id), analysis_timestamp, latest_thought_timestamp, analysis_result])
+                except Exception:
+                    flash("Не удалось сохранить отчет анализа в базу данных.", "error")
+            else:
+                analysis_result = "Нет новых мыслей для анализа с момента последнего отчета."
 
+    return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
+
+@app.route('/thoughts/<user_id>')
+def thoughts_list(user_id):
     all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-    all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
-
-    last_analysis_time = get_last_analysis_timestamp(all_analyses)
-    new_thoughts_to_analyze = get_new_thoughts(all_thoughts, last_analysis_time)
-
-    if not new_thoughts_to_analyze:
-        flash("Нет новых мыслей для анализа с момента последнего отчета.", "success")
-        return redirect(url_for('dashboard', user_id=user_id))
-
-    new_thoughts_to_analyze.sort(key=lambda x: parser.parse(x.get('timestamp')), reverse=True)
-    latest_thought_timestamp = new_thoughts_to_analyze[0]['timestamp']
-
-    report = generate_analysis_report(new_thoughts_to_analyze)
-    
-    try:
-        analysis_timestamp = datetime.now(timezone.utc).isoformat()
-        row_to_insert = [str(user_id), analysis_timestamp, latest_thought_timestamp, report]
-        worksheet_analyses.append_row(row_to_insert)
-        flash("Новый анализ успешно создан!", "success")
-    except Exception as e:
-        flash(f"Не удалось сохранить отчет: {e}", "error")
-
-    return redirect(url_for('dashboard', user_id=user_id))
+    all_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    return render_template('thoughts.html', user_id=user_id, thoughts=all_thoughts)
 
 if __name__ == '__main__':
-    # Railway автоматически предоставит переменную PORT
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
