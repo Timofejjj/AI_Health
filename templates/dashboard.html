@@ -1,65 +1,56 @@
+<!-- dashboard.html -->
 {% extends "base.html" %}
 {% block title %}Главная{% endblock %}
 
 {% block content %}
 <main class="dashboard-container">
-    <header class="dashboard-header">
-        <h1>{{ greeting }}, {{ user_id }}</h1>
-        <a href="{{ url_for('login') }}" class="logout-button">Выйти</a>
-    </header>
+    <!-- ... (ваш существующий код хедера и уведомлений) ... -->
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="notification {{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+    <!-- ... (ваша форма для мыслей) ... -->
+    
+    <!-- +++ НОВАЯ КНОПКА ЗАПУСКА ТАЙМЕРА +++ -->
+    <button id="start-timer-btn" class="button button-main-action">🚀 Запустить таймер</button>
 
-    {% if analysis_result %}
-    <section class="analysis-result">
-        <h2>Результат анализа</h2>
-        <p>{{ analysis_result }}</p>
-    </section>
-    {% endif %}
-
-    <section class="thought-form">
-        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
-            <input type="hidden" name="action" value="save_thought">
-            <div class="input-group">
-                <label for="thought">Что у вас на уме?</label>
-                <textarea id="thought" name="thought" placeholder="Напишите свою мысль здесь..." required></textarea>
-            </div>
-            <button type="submit" class="button">Отправить</button>
-        </form>
-    </section>
 
     <!-- Навигация для ДЕСКТОПА -->
     <nav class="desktop-nav">
-        <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
-        <!-- +++ НОВАЯ КНОПКА +++ -->
-        <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
-        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
-            <input type="hidden" name="action" value="analyze">
-            <button type="submit" class="button button-secondary">Анализ последних мыслей</button>
-        </form>
+        <!-- ... (ваши существующие кнопки) ... -->
     </nav>
 </main>
 
+<!-- +++ НОВОЕ МОДАЛЬНОЕ ОКНО ТАЙМЕРА (изначально скрыто) +++ -->
+<div id="timer-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <!-- Этап 1: Ввод задачи -->
+        <div id="task-input-view">
+            <h2>Над чем вы будете работать?</h2>
+            <div class="input-group">
+                <input type="text" id="task-name-input" placeholder="Например, изучение Flask...">
+            </div>
+            <button id="start-session-btn" class="button">Начать сессию (25 мин)</button>
+            <button id="close-modal-btn-1" class="button-link">Отмена</button>
+        </div>
+
+        <!-- Этап 2: Экран таймера -->
+        <div id="timer-view" style="display: none;">
+            <h3 id="timer-task-name"></h3>
+            <div class="timer-circle-container">
+                <div class="timer-circle-progress"></div>
+                <div id="timer-display" class="timer-text">25:00</div>
+            </div>
+            <div class="timer-controls">
+                <button id="pause-resume-btn" class="icon-button">⏸️</button>
+                <button id="sound-toggle-btn" class="icon-button">🔊</button>
+                <a href="{{ url_for('dynamics_page', user_id=user_id) }}" class="icon-button">📊</a>
+            </div>
+            <button id="finish-session-btn" class="button button-secondary">Завершить и сохранить</button>
+        </div>
+    </div>
+</div>
+
 <!-- Навигация для МОБИЛЬНЫХ -->
-<footer class="mobile-nav">
-    <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="nav-button">
-        <span>Все мысли</span>
-    </a>
-    <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}" class="nav-button">
-        <input type="hidden" name="action" value="analyze">
-        <button type="submit">
-            <span>Анализ</span>
-        </button>
-    </form>
-    <!-- +++ НОВАЯ КНОПКА +++ -->
-    <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="nav-button">
-        <span>История</span>
-    </a>
-</footer>
+<!-- ... (ваш футер) ... -->
+
+<!-- Подключаем скрипт таймера в конце -->
+<script src="{{ url_for('static', filename='js/timer.js') }}"></script>
 {% endblock %}
