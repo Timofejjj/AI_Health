@@ -46,28 +46,4 @@
         </form>
     </nav>
 </main>
-
-<!-- БАННЕР АКТИВНОГО ТАЙМЕРА -->
-<div id="persistent-timer-bar" class="persistent-timer-bar" style="display: none;">
-    <div class="timer-status-indicator">
-        <div id="status-dot" class="status-dot"></div>
-        <span id="persistent-status-text">Таймер запущен</span>
-    </div>
-    <a href="#" id="return-to-timer-btn" class="button">Вернуться к таймеру</a>
-</div>
-
-<!-- МОДАЛЬНОЕ ОКНО ДЛЯ ЗАПУСКА ТАЙМЕРА -->
-<div class="modal-overlay" id="task-modal" style="display: none;">
-    <div class="modal-content">
-        <h2>Над чем вы работаете?</h2>
-        <form id="task-form" method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
-            <input type="hidden" name="action" value="start_session">
-            <div class="input-group">
-                <input type="text" id="task-name-input" name="task_name" placeholder="Например, 'Разработка новой фичи'" required>
-            </div>
-            <button type="submit" class="button button-primary">Начать сессию</button>
-            <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
-        </form>
-    </div>
-</div>
 {% endblock %}
