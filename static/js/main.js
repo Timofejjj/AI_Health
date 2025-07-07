@@ -9,6 +9,7 @@ const appState = {
         isRunning: false,
         taskName: null,
         elapsedSeconds: 0,
+        totalDuration: 25 * 60 // По умолчанию 25 минут
     },
     timerInterval: null
 };
@@ -36,10 +37,17 @@ function updatePersistentBar() {
     const bar = document.getElementById('persistent-timer-bar');
     const st = getTimerState();
     if (!bar) return;
-    if (st && st.isWorkSessionActive) {
+    if (st && st.isWorkSessionActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.taskName;
         bar.querySelector('#return-to-timer-btn').href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
+        setInterval(() => {
+            const elapsed = Math.floor((Date.now() - new Date(st.workSessionStartTime)) / 1000);
+            const remaining = st.totalDurationSeconds - elapsed;
+            const minutes = Math.floor(Math.abs(remaining) / 60);
+            const seconds = Math.abs(remaining) % 60;
+            bar.querySelector('.time-display').textContent = `${remaining < 0 ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }, 1000);
     } else {
         bar.classList.remove('visible');
     }
@@ -137,20 +145,39 @@ function initTimerPage() {
     const taskNameEl = document.querySelector('.timer-task-name');
     if (taskNameEl) taskNameEl.textContent = appState.session.taskName;
     
-    const display = document.querySelector('.time-display');
-    const startPause = document.querySelector('.button-primary');
-    const stopBtn = document.querySelector('.button-secondary');
+    const timeDisplay = document.querySelector('.time-display');
+    const startPauseBtn = document.querySelector('.control-btn-main');
+    const stopBtn = document.querySelector('.control-btn-secondary');
+    const decreaseBtn = document.getElementById('decrease-time-btn');
+    const increaseBtn = document.getElementById('increase-time-btn');
+    const presets = document.querySelectorAll('.time-preset-btn');
+    const progressBar = document.querySelector('.timer-progress .progress-bar');
+    const circumference = progressBar ? 2 * Math.PI * progressBar.r.baseVal.value : 0;
 
     let pauseStart = null;
-    let totalDuration = null;
 
     function updateUI() {
-        const mm = Math.floor(appState.session.elapsedSeconds / 60);
-        const ss = appState.session.elapsedSeconds % 60;
-        display.textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-        startPause.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds ? 'Продолжить' : 'Старт');
-        startPause.classList.toggle('paused', appState.session.isRunning);
+        const remaining = appState.session.totalDuration - appState.session.elapsedSeconds;
+        const minutes = Math.floor(Math.abs(remaining) / 60);
+        const seconds = Math.abs(remaining) % 60;
+        timeDisplay.textContent = `${remaining < 0 ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        if (progressBar) {
+            const progress = appState.session.elapsedSeconds / appState.session.totalDuration;
+            progressBar.style.strokeDashoffset = circumference * (1 - progress);
+        }
+        startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds ? 'Продолжить' : 'Старт');
+        startPauseBtn.classList.toggle('paused', appState.session.isRunning);
+        decreaseBtn.disabled = appState.session.isRunning || appState.session.totalDuration <= 60;
+        increaseBtn.disabled = appState.session.isRunning || appState.session.totalDuration >= 180 * 60;
+        presets.forEach(p => p.disabled = appState.session.isRunning);
         updatePersistentBar();
+    }
+
+    function setDuration(minutes) {
+        if (appState.session.isRunning) return;
+        appState.session.totalDuration = Math.max(60, Math.min(180 * 60, minutes * 60));
+        appState.session.elapsedSeconds = 0;
+        updateUI();
     }
 
     function start() {
@@ -171,7 +198,11 @@ function initTimerPage() {
         const base = Date.now() - appState.session.elapsedSeconds * 1000;
         appState.timerInterval = setInterval(() => {
             appState.session.elapsedSeconds = Math.floor((Date.now() - base) / 1000);
-            updateUI();
+            if (appState.session.elapsedSeconds >= appState.session.totalDuration) {
+                stop(true);
+            } else {
+                updateUI();
+            }
         }, 250);
         setTimerState({
             isWorkSessionActive: true,
@@ -179,7 +210,7 @@ function initTimerPage() {
             taskName: appState.session.taskName,
             workSessionStartTime: appState.session.startTime,
             totalElapsedSecondsAtStart: 0,
-            totalDurationSeconds: totalDuration
+            totalDurationSeconds: appState.session.totalDuration
         });
         updateUI();
     }
@@ -192,7 +223,7 @@ function initTimerPage() {
         updateUI();
     }
 
-    function stop() {
+    function stop(isCompleted = false) {
         clearInterval(appState.timerInterval);
         const st = getTimerState();
         if (st && st.isWorkSessionActive) {
@@ -210,9 +241,15 @@ function initTimerPage() {
         window.location.href = `/dashboard/${uid}`;
     }
 
-    if (startPause) startPause.addEventListener('click', () => appState.session.isRunning ? pause() : start());
-    if (stopBtn) stopBtn.addEventListener('click', stop);
-    start();
+    if (startPauseBtn) startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pause() : start());
+    if (stopBtn) stopBtn.addEventListener('click', () => stop(false));
+    if (decreaseBtn) decreaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 - 5));
+    if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
+    if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
+    
+    window.addEventListener('unload', () => { if (appState.session.isRunning) stop(false); });
+    
+    updateUI();
 }
 
 // =======================================================
@@ -235,15 +272,20 @@ function initDynamicsPage() {
     let dailyChart, hourlyChart, dataAll;
 
     async function fetchData() {
-        const res = await fetch(`/api/dynamics_data/${uid}`);
-        dataAll = await res.json();
-        renderCalendars(dataAll.calendars);
-        weeksFilter.innerHTML = '';
-        for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
-        weeksFilter.value = Math.min(4, dataAll.total_weeks);
-        dayPicker.value = new Date().toISOString().split('T')[0];
-        renderDaily(weeksFilter.value);
-        renderHourly(dayPicker.value);
+        try {
+            const res = await fetch(`/api/dynamics_data/${uid}`);
+            dataAll = await res.json();
+            if (dataAll.error) throw new Error(dataAll.error);
+            renderCalendars(dataAll.calendars);
+            weeksFilter.innerHTML = '';
+            for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
+            weeksFilter.value = Math.min(4, dataAll.total_weeks);
+            dayPicker.value = new Date().toISOString().split('T')[0];
+            renderDaily(weeksFilter.value);
+            renderHourly(dayPicker.value);
+        } catch (e) {
+            console.error('Failed to fetch dynamics data:', e);
+        }
     }
 
     function renderCalendars(cals) {
@@ -279,8 +321,20 @@ function initDynamicsPage() {
         if (dailyChart) dailyChart.destroy();
         dailyChart = new Chart(ctxDaily, {
             type: 'bar',
-            data: { labels, datasets: [{ data: vals, label: 'Часы работы' }] },
-            options: { scales: { y: { beginAtZero: true, max: 15 } } }
+            data: {
+                labels,
+                datasets: [{
+                    data: vals,
+                    label: 'Часы работы',
+                    backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                    borderColor: 'rgba(0, 122, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: { y: { beginAtZero: true, max: 15 } },
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
@@ -290,8 +344,20 @@ function initDynamicsPage() {
         if (hourlyChart) hourlyChart.destroy();
         hourlyChart = new Chart(ctxHourly, {
             type: 'bar',
-            data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ data: arr, label: `Часы за ${day}` }] },
-            options: { scales: { y: { beginAtZero: true } } }
+            data: {
+                labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+                datasets: [{
+                    data: arr,
+                    label: `Часы за ${day}`,
+                    backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                    borderColor: 'rgba(0, 122, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
