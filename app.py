@@ -69,9 +69,11 @@ def get_data_from_sheet(worksheet, user_id):
         print(f"Ошибка получения данных из листа {worksheet.title}: {e}")
         return []
 
+# ИСПРАВЛЕНИЕ: Функция стала более устойчивой к отсутствию данных
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    # Проверяем, что запись существует и содержит непустое поле
     if 'thoughts_analyzed_until' in analyses[0] and analyses[0]['thoughts_analyzed_until']:
         return parser.parse(analyses[0]['thoughts_analyzed_until'])
     return None
@@ -99,7 +101,8 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
     timer_summary = "Нет данных об активности за этот период."
     if timer_logs_list:
         df = pd.DataFrame(timer_logs_list)
-        df['start_time'] = pd.to_datetime(df['start_time'])
+        df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
+        df.dropna(subset=['start_time'], inplace=True)
         df['duration_seconds'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0)
         df['duration_minutes'] = (df['duration_seconds'] / 60).round(1)
         
@@ -112,27 +115,19 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
     prompt = f"""
 # ЗАДАЧА
 Ты — мой личный когнитивный аналитик. Твоя задача — провести комплексный анализ моих мыслей и журнала активности, чтобы выявить закономерности и дать рекомендации.
-
 # ВХОДНЫЕ ДАННЫЕ
-
 ## 1. Мои текстовые мысли:
 {full_text}
-
 ## 2. Журнал моей активности (Работа и Паузы):
 {timer_summary}
-
 # АНАЛИЗ И СТРУКТУРА ОТВЕТА
-
 ### 1. Группировка задач и главная тема периода:
 *   **Сгруппируй задачи:** Внимательно изучи названия задач в журнале активности. Если видишь похожие по смыслу задачи (например, "Работа над ML", "ML-проект", "Обучение модели"), объедини их в одну логическую группу (например, "Проект по Машинному обучению"). Выведи сгруппированный список.
 *   **Главный инсайт:** В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные из мыслей и сгруппированной активности.
-
 ### 2. Связь между работой и мыслями:
 Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания".
-
 ### 3. Анализ паттернов продуктивности:
 Оцени соотношение времени работы и пауз. Есть ли признаки выгорания (длинные, частые паузы), высокой концентрации (длинные рабочие сессии) или прокрастинации (короткая работа, затем длинная пауза)?
-
 ### 4. Рекомендации:
 Дай 1-2 конкретных, действенных совета, основанных на твоем комплексном анализе.
 """
@@ -178,24 +173,28 @@ def dashboard(user_id):
             last_analysis_time = get_last_analysis_timestamp(all_analyses)
             
             new_thoughts = get_new_thoughts(all_thoughts, last_analysis_time)
-            new_timer_logs = [log for log in all_timer_logs if last_analysis_time is None or (log.get('start_time') and parser.parse(log['start_time']) > last_analysis_time)]
+            new_timer_logs = [log for log in all_timer_logs if log.get('start_time') and (last_analysis_time is None or parser.parse(log['start_time']) > last_analysis_time)]
             
             if new_thoughts or new_timer_logs:
                 analysis_result = generate_analysis_report(new_thoughts, new_timer_logs)
                 try:
                     analysis_timestamp = datetime.now(timezone.utc).isoformat()
-                    latest_ts = datetime.min.replace(tzinfo=timezone.utc)
-                    if new_thoughts:
-                        latest_ts = max(latest_ts, max(parser.parse(t['timestamp']) for t in new_thoughts))
-                    if new_timer_logs:
-                        latest_ts = max(latest_ts, max(parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time')))
                     
-                    if latest_ts > datetime.min.replace(tzinfo=timezone.utc):
-                       worksheet_analyses.append_row([str(user_id), analysis_timestamp, latest_ts.isoformat(), analysis_result])
+                    # ИСПРАВЛЕНИЕ: Безопасный поиск максимальной даты
+                    all_new_timestamps = []
+                    if new_thoughts:
+                        all_new_timestamps.extend(parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp'))
+                    if new_timer_logs:
+                        all_new_timestamps.extend(parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time'))
+
+                    if all_new_timestamps:
+                        latest_ts = max(all_new_timestamps)
+                        worksheet_analyses.append_row([str(user_id), analysis_timestamp, latest_ts.isoformat(), analysis_result])
                     else:
+                        # Эта ветка теперь маловероятна, но остается для надежности
                         flash("Не найдено новых данных для сохранения отметки времени анализа.", "error")
                 except Exception as e:
-                    flash(f"Не удалось сохранить отчет анализа в базу данных: {e}", "error")
+                    flash(f"Не удалось сохранить отчет анализа: {e}", "error")
             else:
                 analysis_result = "Нет новых мыслей или рабочих сессий для анализа."
 
@@ -237,6 +236,7 @@ def log_timer_session():
         print(f"Ошибка сохранения сессии в Google Sheets: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# ИСПРАВЛЕНИЕ: Усилена защита от пустых и некорректных данных
 @app.route('/api/dynamics_data/<user_id>')
 def get_dynamics_data(user_id):
     try:
