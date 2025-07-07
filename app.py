@@ -53,6 +53,7 @@ try:
         print("✅ Модель Gemini успешно настроена.")
     else:
         gemini_model = None
+        print("⚠️  Предупреждение: GEMINI_API_KEY не установлен. Анализ будет недоступен.")
 except Exception as e:
     gemini_model = None
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
@@ -72,6 +73,14 @@ def get_data_from_sheet(worksheet, user_id):
     except Exception as e:
         print(f"Ошибка получения данных из листа {worksheet.title}: {e}")
         return []
+
+def normalize_task_name(task_name):
+    name = str(task_name or '').strip().lower()
+    if "ml" in name or "машин" in name:
+        return "машинное обучение"
+    if "проект" in name:
+        return "работа над проектом"
+    return name
 
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
@@ -109,12 +118,12 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
         df.dropna(subset=['start_time'], inplace=True)
         df['duration_seconds'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0)
         df['duration_minutes'] = (df['duration_seconds'] / 60).round(1)
-        summary_lines = [f"- Тип: {row['session_type']}, Задача: '{row.get('task_name', 'Без названия')}', {row['duration_minutes']} мин, Начало: {row['start_time'].strftime('%H:%M')}" for _, row in df.iterrows()]
+        summary_lines = [f"- Тип: {row.get('session_type', 'N/A')}, Задача: '{row.get('task_name_raw', 'Без названия')}', {row['duration_minutes']} мин" for _, row in df.iterrows()]
         timer_summary = "\n".join(summary_lines)
     
     prompt = f"""
 # ЗАДАЧА
-Ты — мой личный когнитивный аналитик. Твоя задача — провести комплексный анализ моих мыслей и журнала активности, чтобы выявить закономерности и дать рекомендации.
+Провести комплексный анализ моих мыслей и рабочей активности.
 
 # ВХОДНЫЕ ДАННЫЕ
 
@@ -125,13 +134,11 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
 {timer_summary}
 
 # АНАЛИЗ И СТРУКТУРА ОТВЕТА
-Действуй как мой личный когнитивный аналитик. Твой ответ должен быть структурирован. Используй Markdown.
-
 ### 1. Краткое резюме и главная тема периода
-*(В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные из мыслей и активности.)*
+*(В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные.)*
 
 ### 2. Связь между работой и мыслями
-*(Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания".)*
+*(Проанализируй, как темы работы коррелируют с темами размышлений.)*
 
 ### 3. Анализ паттернов продуктивности
 *(Оцени соотношение времени работы и пауз. Есть ли признаки выгорания, высокой концентрации или прокрастинации?)*
@@ -159,30 +166,26 @@ def login():
 def dashboard(user_id):
     greeting = get_dynamic_greeting()
     analysis_result = None
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'save_thought':
-            thought_content = request.form.get('thought')
-            if thought_content:
-                worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
-                flash("Мысль сохранена!", "success")
-            return redirect(url_for('dashboard', user_id=user_id))
+    if request.method == 'POST' and request.form.get('action') == 'analyze':
+        all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
+        all_timer_logs = get_data_from_sheet(worksheet_timer_logs, user_id)
+        all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
+        last_analysis_time = get_last_analysis_timestamp(all_analyses)
+        new_thoughts = get_new_data(all_thoughts, last_analysis_time, 'timestamp')
+        new_timer_logs = get_new_data(all_timer_logs, last_analysis_time, 'start_time')
+        if new_thoughts or new_timer_logs:
+            analysis_result = generate_analysis_report(new_thoughts, new_timer_logs)
+            all_timestamps = [parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp')] + [parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time')]
+            if all_timestamps:
+                latest_ts = max(all_timestamps)
+                worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_ts.isoformat(), analysis_result])
+    elif request.method == 'POST':
+        thought_content = request.form.get('thought')
+        if thought_content:
+            worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
+            flash("Мысль сохранена!", "success")
+        return redirect(url_for('dashboard', user_id=user_id))
         
-        elif action == 'analyze':
-            all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-            all_timer_logs = get_data_from_sheet(worksheet_timer_logs, user_id)
-            all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
-            last_analysis_time = get_last_analysis_timestamp(all_analyses)
-            new_thoughts = get_new_data(all_thoughts, last_analysis_time, 'timestamp')
-            new_timer_logs = get_new_data(all_timer_logs, last_analysis_time, 'start_time')
-            if new_thoughts or new_timer_logs:
-                analysis_result = generate_analysis_report(new_thoughts, new_timer_logs)
-                all_timestamps = [parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp')] + [parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time')]
-                if all_timestamps:
-                    latest_ts = max(all_timestamps)
-                    worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_ts.isoformat(), analysis_result])
-            else:
-                analysis_result = "Нет новых мыслей или сессий для анализа."
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
@@ -209,12 +212,48 @@ def dynamics(user_id):
 def log_timer_session():
     if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
     data = request.json
-    required_fields = ['user_id', 'session_type', 'task_name', 'start_time', 'end_time', 'duration_seconds']
-    if not all(field in data for field in required_fields): return jsonify({'status': 'error', 'message': 'Missing data fields'}), 400
+    required_fields = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds']
+    if 'session_type' not in data:
+         required_fields.insert(1, 'task_name_raw')
+         required_fields.insert(2, 'task_name_normalized')
+    else:
+        required_fields.insert(1, 'session_type')
+
+    if not all(field in data or (field == 'task_name_raw' or field == 'task_name_normalized') for field in required_fields):
+        return jsonify({'status': 'error', 'message': f'Missing data fields. Required: {required_fields}'}), 400
+    
     try:
         duration = int(data.get('duration_seconds'))
-        if duration < 1: return jsonify({'status': 'ok', 'message': 'Session too short'})
-        worksheet_timer_logs.append_row([str(data.get(f)) for f in required_fields])
+        task_name = str(data.get('task_name', ''))
+        normalized_task = normalize_task_name(task_name)
+        
+        row_to_append = [
+            str(data.get('user_id')),
+            task_name,
+            normalized_task,
+            str(data.get('start_time')),
+            str(data.get('end_time')),
+            duration
+        ]
+        
+        # Для обратной совместимости, если session_type передается
+        if 'session_type' in data:
+            row_to_append.insert(1, str(data.get('session_type')))
+
+        # Убедимся, что количество элементов совпадает с таблицей
+        # (user_id, task_name_raw, task_name_normalized, start_time, end_time, duration_seconds) - 6 колонок
+        # Если session_type передается, его нужно куда-то вставить или убрать
+        # Давайте придерживаться структуры из скриншота
+        final_row = [
+            str(data.get('user_id')),
+            task_name,
+            normalized_task,
+            str(data.get('start_time')),
+            str(data.get('end_time')),
+            duration
+        ]
+
+        worksheet_timer_logs.append_row(final_row)
         return jsonify({'status': 'success'})
     except Exception as e:
         print(f"Ошибка сохранения сессии: {e}")
@@ -231,15 +270,20 @@ def get_dynamics_data(user_id):
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty_response)
+        
+        # Для совместимости со старыми и новыми данными
+        if 'session_type' not in df.columns:
+            df['session_type'] = 'work' # По умолчанию считаем старые записи рабочими
 
         work_df = df[df['session_type'] == 'work'].copy()
         if work_df.empty: return jsonify(empty_response)
 
         calendars = {}
-        for task_name in work_df['task_name'].unique():
-             task_dates = work_df[work_df['task_name'] == task_name]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist()
+        task_col = 'task_name_raw' if 'task_name_raw' in work_df.columns else 'task_name'
+        for task_name in work_df[task_col].unique():
+             task_dates = work_df[work_df[task_col] == task_name]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist()
              calendars[task_name] = task_dates
-
+        
         work_df.loc[:, 'date'] = work_df['start_time'].dt.date
         work_df.loc[:, 'hour'] = work_df['start_time'].dt.hour
         work_df.loc[:, 'duration_hours'] = pd.to_numeric(work_df['duration_seconds'], errors='coerce').fillna(0) / 3600
