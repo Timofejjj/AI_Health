@@ -72,6 +72,7 @@ function updatePersistentBar() {
 //        API ЛОГИРОВАНИЕ
 // =======================================================
 function logSession(data) {
+    // Использование navigator.sendBeacon для надежной отправки при закрытии страницы
     if (navigator.sendBeacon) {
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         navigator.sendBeacon('/api/log_session', blob);
@@ -79,7 +80,8 @@ function logSession(data) {
         fetch('/api/log_session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            keepalive: true // Важно для fetch при уходе со страницы
         })
         .then(response => response.json())
         .then(data => {
@@ -228,7 +230,7 @@ function initTimerPage() {
         updateUI();
     }
 
-    function stop(isCompleted = false) {
+    function stop() {
         clearInterval(appState.timerInterval);
         const st = getTimerState();
         if (st && st.isWorkSessionActive) {
@@ -250,16 +252,13 @@ function initTimerPage() {
     }
 
     if (startPauseBtn) startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pause() : start());
-    if (stopBtn) stopBtn.addEventListener('click', () => stop(false));
+    if (stopBtn) stopBtn.addEventListener('click', () => stop());
     if (decreaseBtn) decreaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 - 5));
     if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
     if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    window.addEventListener('beforeunload', () => { 
-        if (appState.session.isRunning) {
-            stop(false);
-        }
-    });
+    // !!! ИСПРАВЛЕНИЕ: Этот блок был удален. Он вызывал очистку состояния таймера при навигации.
+    // window.addEventListener('beforeunload', ...);
     
     updateUI();
 }
@@ -406,7 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-
     // --- Инициализация для конкретных страниц ---
     if (document.querySelector('.timer-page')) initTimerPage();
     if (document.querySelector('.dynamics-page')) initDynamicsPage();
