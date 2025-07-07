@@ -51,7 +51,6 @@ except Exception as e:
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
     gemini_model = None
 
-
 # --- ФУНКЦИИ-ПОМОЩНИКИ ---
 def get_dynamic_greeting():
     hour = (datetime.now(timezone.utc).hour + 3) % 24 
@@ -90,6 +89,7 @@ def get_new_data(records, last_analysis_time, time_key='timestamp'):
     return new_data
 
 def generate_analysis_report(thoughts_list, timer_logs_list):
+    #... (Ваш промпт и логика остаются здесь без изменений)
     if not gemini_model: return "Модель анализа недоступна."
     if not thoughts_list and not timer_logs_list: return "Нет новых данных для анализа."
 
@@ -147,8 +147,11 @@ def dashboard(user_id):
         if request.form.get('action') == 'save_thought':
             thought_content = request.form.get('thought')
             if thought_content:
-                worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
-                flash("Мысль сохранена!", "success")
+                try:
+                    worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
+                    flash("Мысль сохранена!", "success")
+                except Exception as e:
+                    flash(f"Ошибка сохранения: {e}", "error")
             return redirect(url_for('dashboard', user_id=user_id))
         
         elif request.form.get('action') == 'analyze':
@@ -173,6 +176,21 @@ def dashboard(user_id):
                 analysis_result = "Нет новых мыслей или сессий для анализа."
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
+# ИСПРАВЛЕНИЕ: Возвращаем на место недостающие маршруты
+@app.route('/thoughts/<user_id>')
+def thoughts_list(user_id):
+    """Страница со списком всех мыслей."""
+    all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
+    all_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    return render_template('thoughts.html', user_id=user_id, thoughts=all_thoughts)
+
+@app.route('/analyses/<user_id>')
+def analyses_list(user_id):
+    """Страница со списком всех прошлых анализов."""
+    all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
+    all_analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    return render_template('analyses.html', user_id=user_id, analyses=all_analyses)
+
 @app.route('/timer/<user_id>')
 def timer(user_id):
     return render_template('timer.html', user_id=user_id, task_name=request.args.get('task', 'Без названия'))
@@ -183,6 +201,7 @@ def dynamics(user_id):
 
 @app.route('/api/log_session', methods=['POST'])
 def log_timer_session():
+    # ... (логика без изменений)
     if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
     data = request.json
     required_fields = ['user_id', 'session_type', 'task_name', 'start_time', 'end_time', 'duration_seconds']
@@ -190,16 +209,15 @@ def log_timer_session():
     try:
         duration = int(data.get('duration_seconds'))
         if duration < 1: return jsonify({'status': 'ok', 'message': 'Session too short'})
-        worksheet_timer_logs.append_row([str(data.get(f)) for f in ['user_id', 'session_type', 'task_name', 'start_time', 'end_time']] + [duration])
+        worksheet_timer_logs.append_row([str(data.get(f)) for f in required_fields[:-1]] + [duration])
         return jsonify({'status': 'success'})
     except Exception as e:
         print(f"Ошибка сохранения сессии: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-### ГЛАВНОЕ ИСПРАВЛЕНИЕ ###
 @app.route('/api/dynamics_data/<user_id>')
 def get_dynamics_data(user_id):
-    # Эта функция теперь полностью защищена от сбоев из-за пустых или некорректных данных
+    # ... (логика без изменений)
     try:
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
         empty_response = {'total_weeks': 0, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
