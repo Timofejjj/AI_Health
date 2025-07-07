@@ -1,41 +1,40 @@
 {% extends "base.html" %}
-{% block title %}Таймер{% endblock %}
+
+{% block title %}Таймер: {{ task_name }}{% endblock %}
 
 {% block content %}
-<div class="timer-page" data-user-id="{{ user_id }}">
-    
-    <header class="timer-header">
-        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">←</a>
+<div class="timer-page">
+    <div class="timer-header">
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← Назад</a>
         <h1>{{ task_name }}</h1>
-        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary button-small">Отчёты</a>
-    </header>
+        <div></div>
+    </div>
 
     <div class="timer-container">
         <div class="timer-circle">
-            <svg class="timer-progress" width="300" height="300" viewBox="0 0 120 120">
-                <circle class="progress-background" cx="60" cy="60" r="54"></circle>
-                <circle class="progress-bar" cx="60" cy="60" r="54" style="stroke-dasharray: 339.29; stroke-dashoffset: 339.29;"></circle>
+            <svg class="timer-progress" width="300" height="300">
+                <circle class="progress-background" cx="150" cy="150" r="140"></circle>
+                <circle class="progress-bar" cx="150" cy="150" r="140" style="stroke-dasharray: 879.6; stroke-dashoffset: 0;"></circle>
             </svg>
             <div class="time-display-wrapper">
                 <div class="time-adjust-controls">
-                    <button id="decrease-time-btn" class="adjust-btn">–</button>
+                    <button id="decrease-time-btn" class="adjust-btn">-</button>
                     <div class="time-display">25:00</div>
                     <button id="increase-time-btn" class="adjust-btn">+</button>
                 </div>
             </div>
         </div>
     </div>
-
+    
     <div class="time-presets">
+        <button class="time-preset-btn" data-minutes="15">15 мин</button>
         <button class="time-preset-btn" data-minutes="25">25 мин</button>
         <button class="time-preset-btn" data-minutes="50">50 мин</button>
-        <button class="time-preset-btn" data-minutes="60">60 мин</button>
     </div>
 
     <div class="timer-controls">
         <button class="control-btn-main">Старт</button>
-        <button class="control-btn-secondary">Завершить</button>
+        <button class="control-btn-secondary">Стоп и сохранить</button>
     </div>
-
 </div>
 {% endblock %}
