@@ -151,7 +151,7 @@ function initModalClose() {
 }
 
 // =======================================================
-//        ТАЙМЕРНАЯ ЛОГИКА
+//        ТАЙМЕРНАЯ ЛОГИКА (С ИСПРАВЛЕНИЯМИ)
 // =======================================================
 function initTimerPage() {
     const body = document.querySelector('body');
@@ -166,7 +166,7 @@ function initTimerPage() {
     // Новые селекторы для виджета
     const timeDisplay = document.querySelector('.timer-widget .time-display');
     const startPauseBtn = document.querySelector('.main-controls .control-btn-main');
-    const stopBtn = document.querySelector('.main-controls .control-btn-secondary'); // Теперь это кнопка "Завершить"
+    const stopBtn = document.querySelector('.main-controls .control-btn-secondary');
     const decreaseBtn = document.getElementById('decrease-time-btn');
     const increaseBtn = document.getElementById('increase-time-btn');
     const presets = document.querySelectorAll('.adjustment-controls .time-preset-btn');
@@ -247,21 +247,36 @@ function initTimerPage() {
         appState.session.isRunning = false;
         appState.session.elapsedSeconds = 0;
         appState.session.startTime = null;
-        // Перенаправление на главную после завершения
         window.location.href = `/dashboard/${uid}`;
     }
 
+    // --- ПРИВЯЗКА СОБЫТИЙ К КНОПКАМ ---
     if (startPauseBtn) startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pause() : start());
     if (stopBtn) stopBtn.addEventListener('click', () => stop());
     if (decreaseBtn) decreaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 - 5));
     if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
     if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    // !!! ИСПРАВЛЕНИЕ: Этот блок был удален. Он вызывал очистку состояния таймера при навигации.
-    // window.addEventListener('beforeunload', ...);
-    
-    updateUI();
+    // --- ИСПРАВЛЕНИЕ: ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ ---
+    const existingState = getTimerState();
+    if (existingState && existingState.isWorkSessionActive && existingState.taskName === appState.session.taskName) {
+        // Если есть активная сессия для этой задачи, восстанавливаем её
+        console.log("Возобновление существующей сессии таймера.");
+        appState.session.totalDuration = existingState.totalDurationSeconds;
+        appState.session.startTime = existingState.workSessionStartTime;
+
+        // Рассчитываем, сколько времени прошло с самого начала
+        const elapsed = Math.floor((Date.now() - new Date(existingState.workSessionStartTime).getTime()) / 1000);
+        appState.session.elapsedSeconds = elapsed;
+        
+        // Визуально запускаем таймер, так как он был активен
+        start();
+    } else {
+        // Если сессии нет, просто показываем интерфейс по умолчанию
+        updateUI(); 
+    }
 }
+
 
 // =======================================================
 //        ДИНАМИКА И ЧАРТЫ
