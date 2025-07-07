@@ -583,6 +583,40 @@ textarea:focus {
     box-shadow: 0 0 0 1px var(--primary-color);
 }
 
+/* --- Стили для состояния перерыва --- */
+.hidden {
+  display: none !important;
+}
+
+#break-session-controls .control-btn-main.green {
+  background-color: var(--green-color);
+  color: white;
+  border-color: #28a745;
+}
+
+#break-session-controls .break-preset-btn {
+  flex-grow: 1;
+  background-color: #f0f0f0;
+  border: 1px solid #b0b0b0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+#break-session-controls .break-preset-btn:hover {
+  background-color: #e0e0e0;
+}
+
+#break-session-controls .break-preset-btn.selected {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+
 /* --- RESPONSIVE LAYOUT --- */
 @media (min-width: 768px) {
   .timer-fab, .fab {
