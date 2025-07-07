@@ -11,31 +11,34 @@
     </header>
 
     <div class="timer-container">
-        <div class="timer-circle">
-            <svg class="timer-progress" width="300" height="300" viewBox="0 0 120 120">
-                <circle class="progress-background" cx="60" cy="60" r="54"></circle>
-                <circle class="progress-bar" cx="60" cy="60" r="54" style="stroke-dasharray: 339.29; stroke-dashoffset: 339.29;"></circle>
-            </svg>
-            <div class="time-display-wrapper">
-                <div class="time-adjust-controls">
-                    <button id="decrease-time-btn" class="adjust-btn">–</button>
-                    <div class="time-display">25:00</div>
-                    <button id="increase-time-btn" class="adjust-btn">+</button>
+        <!-- Новый виджет таймера -->
+        <div class="timer-widget">
+            <div class="display-area">
+                <div class="session-label">СЕССИЯ</div>
+                <div class="time-display">25:00</div>
+            </div>
+            <div class="main-controls">
+                <button class="control-btn-main">Старт</button>
+                <button class="control-btn-secondary">Завершить</button>
+            </div>
+            <div class="adjustment-controls">
+                <div class="control-group">
+                    <span class="control-label">Длина сессии</span>
+                    <div class="buttons-wrapper">
+                        <button id="decrease-time-btn" class="adjust-btn">– 5</button>
+                        <button id="increase-time-btn" class="adjust-btn">+ 5</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">Пресеты</span>
+                     <div class="buttons-wrapper">
+                        <button class="time-preset-btn" data-minutes="25">25</button>
+                        <button class="time-preset-btn" data-minutes="50">50</button>
+                        <button class="time-preset-btn" data-minutes="60">60</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <div class="time-presets">
-        <button class="time-preset-btn" data-minutes="25">25 мин</button>
-        <button class="time-preset-btn" data-minutes="50">50 мин</button>
-        <button class="time-preset-btn" data-minutes="60">60 мин</button>
-    </div>
-
-    <div class="timer-controls">
-        <button class="control-btn-main">Старт</button>
-        <button class="control-btn-secondary">Завершить</button>
-    </div>
-
 </div>
 {% endblock %}
