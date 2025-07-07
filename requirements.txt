@@ -5,4 +5,4 @@ google-generativeai
 gunicorn
 python-dateutil
 pandas
-Flask-Markdown  
+Markdown
