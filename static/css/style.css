@@ -452,13 +452,6 @@ textarea:focus {
   animation: pulse 2s infinite;
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-
-
 .persistent-timer-bar .task-name {
   font-weight: 500;
   white-space: nowrap;
@@ -471,6 +464,13 @@ textarea:focus {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+/* --- KEYFRAMES --- */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
 
 /* --- FAB & MENU --- */
