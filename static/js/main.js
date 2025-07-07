@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fab = document.getElementById('timer-fab');
     const fabMenu = document.getElementById('timer-fab-menu');
     const fabSessionBtn = document.getElementById('fab-menu-session-btn');
-    const modal = document.getElementById('task-modal');
+    const modal = document.querySelector('.modal-overlay');
     
     if (fab && fabMenu) {
         fab.addEventListener('click', (e) => {
@@ -32,29 +32,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- Инициализация страниц ---
-    if (document.querySelector('.timer-page')) initTimer();
-    if (document.querySelector('.dynamics-page')) initDynamics();
-    if (document.querySelector('.modal-overlay')) {
+    // --- Инициализация модального окна ---
+    if (modal) {
         const taskForm = document.getElementById('task-form');
         const closeModalBtn = document.getElementById('close-modal-btn');
-        if (closeModalBtn) closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
+        const userId = document.body.dataset.userId;
+
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
+        }
         if (taskForm) {
             taskForm.addEventListener('submit', (e) => {
                  e.preventDefault();
                  const taskName = document.getElementById('task-name-input').value;
-                 const userId = document.body.dataset.userId;
-                 window.location.href = `/timer/${userId}?task=${encodeURIComponent(taskName)}`;
+                 if (taskName && userId) {
+                     window.location.href = `/timer/${userId}?task=${encodeURIComponent(taskName)}`;
+                 }
             });
         }
     }
+    
+    // --- Инициализация страниц ---
+    if (document.querySelector('.timer-page')) initTimer();
+    if (document.querySelector('.dynamics-page')) initDynamics();
 
     updateFabButton();
 });
 
 
 // =======================================================
-//        ГЛОБАЛЬНОЕ СОСТОЯНИЕ ТАЙМЕРА (localStorage)
+//        ГЛОБАЛЬНОЕ СОСТОЯНИЕ ТАЙМЕРА
 // =======================================================
 const TIMER_STATE_KEY = 'timerState';
 
@@ -74,7 +81,7 @@ function updateFabButton() {
 }
 
 // =======================================================
-//          НАДЕЖНОЕ СОХРАНЕНИЕ СЕССИИ (sendBeacon)
+//          НАДЕЖНОЕ СОХРАНЕНИЕ СЕССИИ
 // =======================================================
 function logSession(sessionData) {
     if (navigator.sendBeacon) {
@@ -96,8 +103,8 @@ function initTimer() {
     const presets = document.querySelectorAll('.time-preset-btn');
     const timerPage = document.querySelector('.timer-page');
     const progressBar = document.querySelector('.timer-progress .progress-bar');
-    const circumference = 2 * Math.PI * progressBar.r.baseVal.value;
-    progressBar.style.strokeDasharray = `${circumference} ${circumference}`;
+    const circumference = progressBar ? 2 * Math.PI * progressBar.r.baseVal.value : 0;
+    if (progressBar) progressBar.style.strokeDasharray = `${circumference} ${circumference}`;
 
     const userId = timerPage.dataset.userId;
     const taskName = timerPage.dataset.taskName;
@@ -114,10 +121,12 @@ function initTimer() {
         const seconds = remainingSeconds % 60;
         timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         
-        const progressPercent = (elapsedSeconds / totalDurationSeconds) * 100;
-        progressBar.style.strokeDashoffset = circumference - (progressPercent / 100) * circumference;
+        if(progressBar) {
+            const progressPercent = (elapsedSeconds / totalDurationSeconds) * 100;
+            progressBar.style.strokeDashoffset = circumference - (progressPercent / 100) * circumference;
+        }
         
-        decreaseBtn.disabled = totalDurationSeconds <= 60 || isRunning;
+        decreaseBtn.disabled = totalDurationSeconds <= 60 * 5 || isRunning;
         increaseBtn.disabled = totalDurationSeconds >= 180 * 60 || isRunning;
         presets.forEach(p => p.disabled = isRunning);
         
@@ -141,12 +150,14 @@ function initTimer() {
         if (isRunning) return;
         isRunning = true;
         
-        const state = {
-            isWorkSessionActive: true, userId, taskName,
-            workSessionStartTime: new Date().toISOString(),
-            totalDurationSeconds,
-            totalElapsedSecondsAtStart: elapsedSeconds
-        };
+        let state = getTimerState();
+        if (!state || !state.isWorkSessionActive) {
+            state = {
+                isWorkSessionActive: true, userId, taskName,
+                workSessionStartTime: new Date().toISOString(),
+                totalDurationSeconds, totalElapsedSecondsAtStart: elapsedSeconds
+            };
+        }
         setTimerState(state);
         
         if (lastPauseStartTime) {
@@ -188,6 +199,13 @@ function initTimer() {
         clearInterval(timerInterval);
         const state = getTimerState();
         if (state && state.isWorkSessionActive) {
+            if (lastPauseStartTime) {
+                logSession({
+                    session_type: 'pause', userId, taskName,
+                    start_time: lastPauseStartTime, end_time: new Date().toISOString(),
+                    duration_seconds: Math.floor((new Date() - new Date(lastPauseStartTime)) / 1000)
+                });
+            }
             logSession({
                 session_type: 'work', userId, taskName,
                 start_time: state.workSessionStartTime, end_time: new Date().toISOString(),
@@ -195,6 +213,7 @@ function initTimer() {
             });
         }
         clearTimerState();
+        updateFabButton();
         window.location.href = `/dashboard/${userId}`;
     }
 
@@ -228,7 +247,7 @@ function initDynamics() {
             if (!response.ok) throw new Error('Failed to fetch data');
             allData = await response.json();
             
-            if (allData.error) { console.error(allData.error); return; }
+            if (allData.error || !ctxDaily || !ctxHourly) { console.error(allData.error || "Chart context not found"); return; }
 
             weeksFilter.innerHTML = '';
             for (let i = 1; i <= allData.total_weeks; i++) {
@@ -245,7 +264,6 @@ function initDynamics() {
     }
     
     function renderDailyChart(weeksToShow) {
-        if (!ctxDaily || !allData) return;
         const daysToShow = weeksToShow * 7;
         const labels = allData.activity_by_day.labels.slice(-daysToShow);
         const data = allData.activity_by_day.data.slice(-daysToShow);
@@ -259,7 +277,6 @@ function initDynamics() {
     }
     
     function renderHourlyChart(dateString) {
-        if (!ctxHourly || !allData) return;
         const hourlyData = Array(24).fill(0);
         if (allData.activity_by_hour) {
             const dayData = allData.activity_by_hour.filter(d => d.start_time.startsWith(dateString));
