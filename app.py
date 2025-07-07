@@ -2,14 +2,13 @@ import os
 import json
 import locale
 from datetime import datetime, timezone
-from dateutil import parser
-
 import pandas as pd
 import gspread
 import markdown
 import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from google.oauth2.service_account import Credentials
+from dateutil import parser
 
 # --- КОНФИГУРАЦИЯ ---
 app = Flask(__name__)
@@ -37,10 +36,7 @@ try:
         raise ValueError("Переменные окружения GOOGLE_CREDENTIALS_JSON и GOOGLE_SHEET_ID должны быть установлены.")
 
     creds_info = json.loads(google_creds_json)
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     gc = gspread.authorize(creds)
     spreadsheet = gc.open_by_key(sheet_id)
@@ -69,12 +65,6 @@ def get_dynamic_greeting():
     if 12 <= hour < 17: return "Добрый день"
     return "Добрый вечер"
 
-def normalize_task_name(task_name):
-    name = str(task_name or '').strip().lower()
-    if "ml" in name or "машин" in name: return "машинное обучение"
-    if "проект" in name: return "работа над проектом"
-    return name
-
 def get_data_from_sheet(worksheet, user_id):
     if not worksheet: return []
     try:
@@ -83,6 +73,38 @@ def get_data_from_sheet(worksheet, user_id):
     except Exception as e:
         print(f"Ошибка получения данных из {worksheet.title}: {e}")
         return []
+
+def normalize_task_name_with_ai(new_task_name, existing_tasks):
+    """
+    Использует ИИ для сопоставления новой задачи с существующими.
+    Если похожая задача найдена, возвращает её. Иначе возвращает новую.
+    """
+    if not gemini_model or not existing_tasks:
+        return new_task_name  # Если нет ИИ или существующих задач, возвращаем как есть
+
+    # Превращаем список задач в нумерованный список для промпта
+    existing_tasks_str = "\n".join(f"- {task}" for task in set(existing_tasks))
+    
+    prompt = f"""
+        Проанализируй название новой задачи и список уже существующих.
+        
+        Новая задача: "{new_task_name}"
+
+        Список существующих задач:
+        {existing_tasks_str}
+
+        Если новая задача по смыслу является дубликатом одной из существующих (например, "ML" и "Работа над ML проектом"), верни точное название существующей задачи из списка.
+        Если задача действительно новая и не похожа ни на одну из существующих, верни точное название новой задачи "{new_task_name}".
+        Ответ должен содержать ТОЛЬКО одно название задачи и ничего больше.
+    """
+    try:
+        response = gemini_model.generate_content(prompt)
+        # Очищаем ответ от лишних символов, которые может добавить модель
+        normalized_name = response.text.strip().replace("*", "").replace("`", "")
+        return normalized_name
+    except Exception as e:
+        print(f"Ошибка нормализации с помощью ИИ: {e}")
+        return new_task_name  # В случае ошибки возвращаем исходное название
 
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
@@ -194,7 +216,6 @@ def timer_page(user_id):
 def dynamics(user_id):
     return render_template('dynamics.html', user_id=user_id)
 
-
 # --- API МАРШРУТЫ ---
 @app.route('/api/log_session', methods=['POST'])
 def log_timer_session():
@@ -202,9 +223,27 @@ def log_timer_session():
     data = request.json
     required = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds']
     if not all(k in data for k in required): return jsonify({'status': 'error', 'message': f'Missing fields: {required}'}), 400
+    
     try:
+        user_id = str(data['user_id'])
+        new_task_name = str(data['task_name'])
+
+        # Получаем список уже существующих задач для этого пользователя
+        all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
+        existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
+
+        # Нормализуем название с помощью ИИ
+        normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
+
         duration = int(data['duration_seconds'])
-        row = [str(data['user_id']), data['task_name'], normalize_task_name(data['task_name']), data['start_time'], data['end_time'], duration]
+        row = [
+            user_id,
+            new_task_name,      # task_name_raw
+            normalized_task,    # task_name_normalized
+            data['start_time'],
+            data['end_time'],
+            duration
+        ]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
     except Exception as e:
