@@ -1,21 +1,64 @@
 document.addEventListener('DOMContentLoaded', () => {
+    checkPersistentTimerBar();
+    initFabMenu();
+    if (document.querySelector('.modal-overlay')) initModal();
+    if (document.querySelector('.timer-page')) initTimer();
+    if (document.querySelector('.dynamics-page')) initDynamics();
+    updateFabButton();
+});
 
-    // --- Управление FAB меню ---
+// =======================================================
+//        ГЛОБАЛЬНОЕ СОСТОЯНИЕ И UI
+// =======================================================
+const TIMER_STATE_KEY = 'timerState';
+
+function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
+function setTimerState(state) { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
+function clearTimerState() { localStorage.removeItem(TIMER_STATE_KEY); }
+
+function updateFabButton() {
+    const fabSessionBtn = document.getElementById('fab-menu-session-btn');
+    if (!fabSessionBtn) return;
+    const state = getTimerState();
+    fabSessionBtn.textContent = (state && state.isWorkSessionActive) ? 'Вернуться к сессии' : 'Начать сессию';
+}
+
+function checkPersistentTimerBar() {
+    const timerState = getTimerState();
+    const bar = document.getElementById('persistent-timer-bar');
+    if (!bar) return;
+
+    if (timerState && timerState.isWorkSessionActive && !document.querySelector('.timer-page')) {
+        bar.style.display = 'flex';
+        bar.querySelector('.task-name').textContent = timerState.taskName;
+        bar.querySelector('#return-to-timer-btn').href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
+
+        const updateBarTime = () => {
+            const elapsed = Math.floor((new Date() - new Date(timerState.workSessionStartTime)) / 1000) + timerState.totalElapsedSecondsAtStart;
+            const remaining = timerState.totalDurationSeconds - elapsed;
+            const minutes = Math.floor(Math.abs(remaining) / 60);
+            const seconds = Math.abs(remaining) % 60;
+            bar.querySelector('.time-display').textContent = `${remaining < 0 ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
+        updateBarTime();
+        setInterval(updateBarTime, 1000);
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function initFabMenu() {
     const fab = document.getElementById('timer-fab');
     const fabMenu = document.getElementById('timer-fab-menu');
     const fabSessionBtn = document.getElementById('fab-menu-session-btn');
     const modal = document.querySelector('.modal-overlay');
-    
+
     if (fab && fabMenu) {
         fab.addEventListener('click', (e) => {
             e.stopPropagation();
             fabMenu.classList.toggle('visible');
         });
-
-        document.addEventListener('click', () => {
-            fabMenu.classList.remove('visible');
-        });
-        
+        document.addEventListener('click', () => fabMenu.classList.remove('visible'));
         fabMenu.addEventListener('click', (e) => e.stopPropagation());
         
         if (fabSessionBtn) {
@@ -31,52 +74,24 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+}
+
+function initModal() {
+    const modal = document.querySelector('.modal-overlay');
+    const taskForm = document.getElementById('task-form');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const userId = document.body.dataset.userId;
+
+    if (closeModalBtn) closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
     
-    // --- Инициализация модального окна ---
-    if (modal) {
-        const taskForm = document.getElementById('task-form');
-        const closeModalBtn = document.getElementById('close-modal-btn');
-        const userId = document.body.dataset.userId;
-
-        if (closeModalBtn) {
-            closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
-        }
-        if (taskForm) {
-            taskForm.addEventListener('submit', (e) => {
-                 e.preventDefault();
-                 const taskName = document.getElementById('task-name-input').value;
-                 if (taskName && userId) {
-                     window.location.href = `/timer/${userId}?task=${encodeURIComponent(taskName)}`;
-                 }
-            });
-        }
-    }
-    
-    // --- Инициализация страниц ---
-    if (document.querySelector('.timer-page')) initTimer();
-    if (document.querySelector('.dynamics-page')) initDynamics();
-
-    updateFabButton();
-});
-
-
-// =======================================================
-//        ГЛОБАЛЬНОЕ СОСТОЯНИЕ ТАЙМЕРА
-// =======================================================
-const TIMER_STATE_KEY = 'timerState';
-
-function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
-function setTimerState(state) { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
-function clearTimerState() { localStorage.removeItem(TIMER_STATE_KEY); }
-
-function updateFabButton() {
-    const fabSessionBtn = document.getElementById('fab-menu-session-btn');
-    if (!fabSessionBtn) return;
-    const state = getTimerState();
-    if (state && state.isWorkSessionActive) {
-        fabSessionBtn.textContent = 'Вернуться к сессии';
-    } else {
-        fabSessionBtn.textContent = 'Начать сессию';
+    if (taskForm) {
+        taskForm.addEventListener('submit', (e) => {
+             e.preventDefault();
+             const taskName = document.getElementById('task-name-input').value;
+             if (taskName && userId) {
+                 window.location.href = `/timer/${userId}?task=${encodeURIComponent(taskName)}`;
+             }
+        });
     }
 }
 
@@ -89,7 +104,6 @@ function logSession(sessionData) {
         navigator.sendBeacon('/api/log_session', blob);
     }
 }
-
 
 // =======================================================
 //                    ЛОГИКА ТАЙМЕРА
@@ -120,23 +134,15 @@ function initTimer() {
         const minutes = Math.floor(remainingSeconds / 60);
         const seconds = remainingSeconds % 60;
         timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        
-        if(progressBar) {
+        if (progressBar) {
             const progressPercent = (elapsedSeconds / totalDurationSeconds) * 100;
             progressBar.style.strokeDashoffset = circumference - (progressPercent / 100) * circumference;
         }
-        
-        decreaseBtn.disabled = totalDurationSeconds <= 60 * 5 || isRunning;
+        decreaseBtn.disabled = totalDurationSeconds <= 60 || isRunning;
         increaseBtn.disabled = totalDurationSeconds >= 180 * 60 || isRunning;
         presets.forEach(p => p.disabled = isRunning);
-        
-        if (isRunning) {
-            startPauseBtn.textContent = 'Пауза';
-            startPauseBtn.classList.add('paused');
-        } else {
-            startPauseBtn.textContent = elapsedSeconds > 0 ? 'Продолжить' : 'Старт';
-            startPauseBtn.classList.remove('paused');
-        }
+        startPauseBtn.textContent = isRunning ? 'Пауза' : (elapsedSeconds > 0 ? 'Продолжить' : 'Старт');
+        startPauseBtn.classList.toggle('paused', isRunning);
     }
 
     function setDuration(minutes) {
@@ -149,17 +155,12 @@ function initTimer() {
     function start() {
         if (isRunning) return;
         isRunning = true;
-        
-        let state = getTimerState();
-        if (!state || !state.isWorkSessionActive) {
-            state = {
-                isWorkSessionActive: true, userId, taskName,
-                workSessionStartTime: new Date().toISOString(),
-                totalDurationSeconds, totalElapsedSecondsAtStart: elapsedSeconds
-            };
-        }
+        const state = {
+            isWorkSessionActive: true, userId, taskName,
+            workSessionStartTime: new Date().toISOString(),
+            totalDurationSeconds, totalElapsedSecondsAtStart: elapsedSeconds
+        };
         setTimerState(state);
-        
         if (lastPauseStartTime) {
             logSession({
                 session_type: 'pause', userId, taskName,
@@ -168,21 +169,16 @@ function initTimer() {
             });
             lastPauseStartTime = null;
         }
-
         const tickStartTime = Date.now();
         const initialElapsed = elapsedSeconds;
-        
         timerInterval = setInterval(() => {
-            const delta = Math.floor((Date.now() - tickStartTime) / 1000);
-            elapsedSeconds = initialElapsed + delta;
-            
+            elapsedSeconds = initialElapsed + Math.floor((Date.now() - tickStartTime) / 1000);
             if (elapsedSeconds >= totalDurationSeconds) {
                 stop(true);
             } else {
                 updateUI();
             }
         }, 250);
-        
         updateFabButton();
         updateUI();
     }
@@ -224,10 +220,8 @@ function initTimer() {
     presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
     window.addEventListener('unload', () => { if (isRunning) stop(false); });
-
     updateUI();
 }
-
 
 // =======================================================
 //                ЛОГИКА СТРАНИЦЫ ОТЧЕТОВ
@@ -248,6 +242,8 @@ function initDynamics() {
             allData = await response.json();
             
             if (allData.error || !ctxDaily || !ctxHourly) { console.error(allData.error || "Chart context not found"); return; }
+            
+            renderCalendars(allData.calendars);
 
             weeksFilter.innerHTML = '';
             for (let i = 1; i <= allData.total_weeks; i++) {
@@ -255,25 +251,51 @@ function initDynamics() {
                 weeksFilter.add(option);
             }
             weeksFilter.value = Math.min(4, allData.total_weeks);
-            
             dayPicker.value = new Date().toISOString().split('T')[0];
-
             renderDailyChart(weeksFilter.value);
             renderHourlyChart(dayPicker.value);
         } catch (e) { console.error(e); }
     }
     
+    function renderCalendars(calendarsData) {
+        const container = document.getElementById('calendars-container');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!calendarsData || Object.keys(calendarsData).length === 0) {
+            container.innerHTML = '<p>Нет данных по задачам.</p>';
+            return;
+        }
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        for (const taskName in calendarsData) {
+            const activeDates = new Set(calendarsData[taskName]);
+            const calendarEl = document.createElement('div');
+            calendarEl.className = 'calendar';
+            let html = `<div class="calendar-header">${taskName}</div><div class="calendar-body">`;
+            ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(day => html += `<div class="calendar-day header">${day}</div>`);
+            const date = new Date(today.getFullYear(), today.getMonth(), 1);
+            let firstDayOffset = date.getDay() === 0 ? 6 : date.getDay() - 1;
+            for(let i=0; i < firstDayOffset; i++) { html += `<div class="calendar-day"></div>`; }
+            while (date.getMonth() === today.getMonth()) {
+                const dateString = date.toISOString().split('T')[0];
+                let classes = 'calendar-day';
+                if (activeDates.has(dateString)) classes += ' active';
+                if (date.getTime() === today.getTime()) classes += ' today';
+                html += `<div class="${classes}">${date.getDate()}</div>`;
+                date.setDate(date.getDate() + 1);
+            }
+            html += `</div>`;
+            calendarEl.innerHTML = html;
+            container.appendChild(calendarEl);
+        }
+    }
+
     function renderDailyChart(weeksToShow) {
         const daysToShow = weeksToShow * 7;
         const labels = allData.activity_by_day.labels.slice(-daysToShow);
         const data = allData.activity_by_day.data.slice(-daysToShow);
-        
         if (dailyChart) dailyChart.destroy();
-        dailyChart = new Chart(ctxDaily, {
-            type: 'bar',
-            data: { labels, datasets: [{ data, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)' }] },
-            options: { scales: { y: { beginAtZero: true, max: 15, title: { display: true, text: 'Часы' }}}}
-        });
+        dailyChart = new Chart(ctxDaily, { type: 'bar', data: { labels, datasets: [{ data, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)' }] }, options: { scales: { y: { beginAtZero: true, max: 15, title: { display: true, text: 'Часы' }}}} });
     }
     
     function renderHourlyChart(dateString) {
@@ -282,16 +304,8 @@ function initDynamics() {
             const dayData = allData.activity_by_hour.filter(d => d.start_time.startsWith(dateString));
             dayData.forEach(session => { hourlyData[session.hour] += session.duration_hours; });
         }
-        
         if (hourlyChart) hourlyChart.destroy();
-        hourlyChart = new Chart(ctxHourly, {
-            type: 'bar',
-            data: { 
-                labels: Array.from({length: 24}, (_, i) => `${i}:00`),
-                datasets: [{ data: hourlyData, label: `Часы работы за ${dateString}`, backgroundColor: 'rgba(52, 199, 89, 0.6)' }]
-            },
-            options: { scales: { y: { beginAtZero: true }}}
-        });
+        hourlyChart = new Chart(ctxHourly, { type: 'bar', data: { labels: Array.from({length: 24}, (_, i) => `${i}:00`), datasets: [{ data: hourlyData, label: `Часы работы за ${dateString}`, backgroundColor: 'rgba(52, 199, 89, 0.6)' }] }, options: { scales: { y: { beginAtZero: true }}} });
     }
     
     weeksFilter.addEventListener('change', () => renderDailyChart(weeksFilter.value));
