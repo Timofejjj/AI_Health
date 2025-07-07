@@ -161,14 +161,13 @@ function initTimerPage() {
     const taskNameEl = document.querySelector('.timer-header h1');
     if (taskNameEl) taskNameEl.textContent = appState.session.taskName;
     
-    const timeDisplay = document.querySelector('.time-display');
-    const startPauseBtn = document.querySelector('.control-btn-main');
-    const stopBtn = document.querySelector('.control-btn-secondary');
+    // Новые селекторы для виджета
+    const timeDisplay = document.querySelector('.timer-widget .time-display');
+    const startPauseBtn = document.querySelector('.main-controls .control-btn-main');
+    const stopBtn = document.querySelector('.main-controls .control-btn-secondary'); // Теперь это кнопка "Завершить"
     const decreaseBtn = document.getElementById('decrease-time-btn');
     const increaseBtn = document.getElementById('increase-time-btn');
-    const presets = document.querySelectorAll('.time-preset-btn');
-    const progressBar = document.querySelector('.timer-progress .progress-bar');
-    const circumference = progressBar ? 2 * Math.PI * progressBar.r.baseVal.value : 0;
+    const presets = document.querySelectorAll('.adjustment-controls .time-preset-btn');
 
     let pauseStart = null;
 
@@ -179,12 +178,6 @@ function initTimerPage() {
         const minutes = Math.floor(Math.abs(remaining) / 60);
         const seconds = Math.abs(remaining) % 60;
         timeDisplay.textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-        if (progressBar) {
-            const progress = Math.min(1, appState.session.elapsedSeconds / appState.session.totalDuration);
-            progressBar.style.strokeDashoffset = circumference * (1 - progress);
-            progressBar.classList.toggle('overtime', isOvertime);
-        }
         timeDisplay.classList.toggle('overtime', isOvertime);
 
         startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds > 0 ? 'Продолжить' : 'Старт');
@@ -209,7 +202,6 @@ function initTimerPage() {
         appState.session.isRunning = true;
         if (!appState.session.startTime) appState.session.startTime = new Date().toISOString();
         if (pauseStart) {
-            // This is a pause-resume event, not a separate session. The main session log handles total time.
             pauseStart = null;
         }
         const base = Date.now() - appState.session.elapsedSeconds * 1000;
@@ -253,6 +245,7 @@ function initTimerPage() {
         appState.session.isRunning = false;
         appState.session.elapsedSeconds = 0;
         appState.session.startTime = null;
+        // Перенаправление на главную после завершения
         window.location.href = `/dashboard/${uid}`;
     }
 
@@ -262,11 +255,8 @@ function initTimerPage() {
     if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
     if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    // Log final session on page close/navigate away
     window.addEventListener('beforeunload', () => { 
         if (appState.session.isRunning) {
-            // Note: This tries to log, but might not always complete.
-            // The persistent state helps recover, but stopping manually is best.
             stop(false);
         }
     });
