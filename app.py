@@ -16,14 +16,12 @@ app.secret_key = os.urandom(24)
 
 @app.template_filter('markdown')
 def markdown_filter(s):
-    # Добавляем расширения для поддержки таблиц и блоков кода
     return markdown.markdown(s or '', extensions=['fenced_code', 'tables'])
 
 try:
-    # Устанавливаем русскую локаль для корректного отображения дат
     locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 except locale.Error:
-    print("Предупреждение: Локаль 'ru_RU.UTF-8' не найдена. Даты могут отображаться некорректно.")
+    print("Предупреждение: Локаль 'ru_RU.UTF-8' не найдена.")
 
 # --- ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
 worksheet_thoughts = None
@@ -56,27 +54,24 @@ try:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         print("✅ Модель Gemini успешно настроена.")
     else:
-        print("⚠️  Предупреждение: GEMINI_API_KEY не установлен. Анализ и нормализация задач будут недоступны.")
+        print("⚠️  Предупреждение: GEMINI_API_KEY не установлен. Анализ будет недоступен.")
 except Exception as e:
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
 
 # --- ФУНКЦИИ-ПОМОЩНИКИ ---
 def get_dynamic_greeting():
-    # Приветствие в зависимости от времени (по МСК)
     hour = (datetime.now(timezone.utc).hour + 3) % 24
     if 4 <= hour < 12: return "Доброе утро"
     if 12 <= hour < 17: return "Добрый день"
-    if 17 <= hour < 22: return "Добрый вечер"
-    return "Доброй ночи"
+    return "Добрый вечер"
 
 def get_data_from_sheet(worksheet, user_id):
     if not worksheet: return []
     try:
         records = worksheet.get_all_records()
-        # Фильтруем записи по user_id
         return [r for r in records if str(r.get('user_id')) == str(user_id)]
     except Exception as e:
-        print(f"Ошибка получения данных из листа '{worksheet.title}': {e}")
+        print(f"Ошибка получения данных из {worksheet.title}: {e}")
         return []
 
 def normalize_task_name_with_ai(new_task_name, existing_tasks):
@@ -87,7 +82,7 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
     if not gemini_model or not existing_tasks:
         return new_task_name  # Если нет ИИ или существующих задач, возвращаем как есть
 
-    # Превращаем список уникальных задач в нумерованный список для промпта
+    # Превращаем список задач в нумерованный список для промпта
     existing_tasks_str = "\n".join(f"- {task}" for task in set(existing_tasks))
     
     prompt = f"""
@@ -98,15 +93,14 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
         Список существующих задач:
         {existing_tasks_str}
 
-        Если новая задача по смыслу является дубликатом одной из существующих (например, "ML" и "Работа над ML проектом", "Дизайн" и "Создание дизайна"), верни точное название существующей задачи из списка.
+        Если новая задача по смыслу является дубликатом одной из существующих (например, "ML" и "Работа над ML проектом"), верни точное название существующей задачи из списка.
         Если задача действительно новая и не похожа ни на одну из существующих, верни точное название новой задачи "{new_task_name}".
         Ответ должен содержать ТОЛЬКО одно название задачи и ничего больше.
     """
     try:
         response = gemini_model.generate_content(prompt)
-        # Очищаем ответ от лишних символов, которые может добавить модель (markdown, и т.д.)
+        # Очищаем ответ от лишних символов, которые может добавить модель
         normalized_name = response.text.strip().replace("*", "").replace("`", "")
-        print(f"AI Normalization: '{new_task_name}' -> '{normalized_name}'")
         return normalized_name
     except Exception as e:
         print(f"Ошибка нормализации с помощью ИИ: {e}")
@@ -114,29 +108,21 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
 
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
-    try:
-        analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-        last = analyses[0].get('thoughts_analyzed_until')
-        return parser.parse(last) if last else None
-    except (parser.ParserError, TypeError) as e:
-        print(f"Ошибка парсинга даты последнего анализа: {e}")
-        return None
+    analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    last = analyses[0].get('thoughts_analyzed_until')
+    return parser.parse(last) if last else None
 
 def get_new_data(records, last_time, time_key):
     if not records: return []
-    if last_time is None: return records # Если анализа не было, берем все данные
-    new_records = []
+    if last_time is None: return records
+    new = []
     for rec in records:
-        ts_str = rec.get(time_key)
-        if not ts_str: continue
+        ts = rec.get(time_key)
+        if not ts: continue
         try:
-            # Убедимся, что время в UTC для корректного сравнения
-            record_time = parser.parse(ts_str).astimezone(timezone.utc)
-            if record_time > last_time.astimezone(timezone.utc):
-                new_records.append(rec)
-        except (parser.ParserError, TypeError) as e:
-            print(f"Невозможно распарсить дату: {ts_str}. Ошибка: {e}")
-    return new_records
+            if parser.parse(ts) > last_time: new.append(rec)
+        except Exception: print(f"Невозможно распарсить дату: {ts}")
+    return new
 
 def generate_analysis_report(thoughts, timers):
     if not gemini_model: return "Модель анализа недоступна."
@@ -144,44 +130,35 @@ def generate_analysis_report(thoughts, timers):
 
     thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
     
-    timer_text = "Нет данных об активности."
     if timers:
         df = pd.DataFrame(timers)
+        df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df['duration_minutes'] = (pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0) / 60).round(1)
-        # Группируем по нормализованному имени задачи
-        task_col = 'task_name_normalized' if 'task_name_normalized' in df.columns else 'task_name_raw'
-        grouped_timers = df.groupby(task_col)['duration_minutes'].sum().reset_index()
-        timer_text = "\n".join(f"- Задача: '{row[task_col]}', Суммарно: {row['duration_minutes']} мин" for _, row in grouped_timers.iterrows())
+        timer_text = "\n".join(f"- Задача: '{row['task_name']}', {row['duration_minutes']} мин" for _, row in df.iterrows())
+    else:
+        timer_text = "Нет данных об активности."
     
     prompt = f"""
 # ЗАДАЧА
-Ты — мой личный ассистент и коуч по продуктивности. Проведи глубокий, но сжатый анализ моих недавних мыслей и рабочей активности. Твоя цель — помочь мне отрефлексировать и найти полезные инсайты.
+Провести комплексный анализ моих мыслей и рабочей активности.
 
-# КОНТЕКСТ
-Я записал(а) свои мысли и отслеживал(а) время, потраченное на разные задачи.
-
-# ВХОДНЫЕ ДАННЫЕ
-
-## Мои мысли (дневник)
+# МЫСЛИ
 {thoughts_text}
 
-## Моя активность (трекер времени)
+# АКТИВНОСТЬ
 {timer_text}
 
-# ФОРМАТ ОТВЕТА
-Предоставь анализ в формате Markdown. Будь кратким, структурированным и эмпатичным.
-
-1.  **Главное за период:** Одно-два предложения. Какая основная тема или эмоция проходит красной нитью через все записи?
-2.  **Связь мыслей и дел:** Есть ли пересечения между тем, о чем я думаю, и тем, над чем работаю? Может, мои мысли мешают или помогают работе?
-3.  **Паттерны продуктивности:** Когда я был(а) наиболее продуктивен(а)? Есть ли повторяющиеся отвлекающие факторы или, наоборот, условия для потока?
-4.  **Рекомендация:** Один конкретный, действенный совет. На что мне стоит обратить внимание в следующий раз?
+# ОТВЕТ
+1. Краткое резюме и главная тема
+2. Связь между работой и мыслями
+3. Паттерны продуктивности
+4. Рекомендации
 """
     try:
         resp = gemini_model.generate_content(prompt)
         return resp.text
     except Exception as e:
-        print(f"Ошибка генерации анализа: {e}")
-        return f"К сожалению, при генерации анализа произошла ошибка: {e}"
+        return f"Ошибка генерации анализа: {e}"
 
 # --- МАРШРУТЫ ---
 @app.route('/', methods=['GET', 'POST'])
@@ -208,38 +185,26 @@ def dashboard(user_id):
                 analysis_result = generate_analysis_report(new_thoughts, new_timers)
                 all_ts = [parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp')] + [parser.parse(t['start_time']) for t in new_timers if t.get('start_time')]
                 if all_ts:
-                    latest_timestamp = max(all_ts)
-                    worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_timestamp.isoformat(), analysis_result])
-                    flash("Новый анализ готов!", "success")
-                else:
-                    flash("Нет новых данных для создания анализа.", "info")
-            else:
-                flash("Нет новых данных для анализа.", "info")
-
-        else: # Сохранение мысли
+                    latest = max(all_ts)
+                    worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest.isoformat(), analysis_result])
+        else:
             thought = request.form.get('thought')
             if thought:
                 worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
                 flash("Мысль сохранена!", "success")
-        
-        # После любого POST-запроса делаем редирект, чтобы избежать повторной отправки формы
-        return redirect(url_for('dashboard', user_id=user_id))
-        
-    # GET-запрос
+            return redirect(url_for('dashboard', user_id=user_id))
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
 def thoughts_list(user_id):
     thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-    if thoughts:
-        thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return render_template('thoughts.html', user_id=user_id, thoughts=thoughts)
 
 @app.route('/analyses/<user_id>')
 def analyses_list(user_id):
     analyses = get_data_from_sheet(worksheet_analyses, user_id)
-    if analyses:
-        analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
+    analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return render_template('analyses.html', user_id=user_id, analyses=analyses)
 
 @app.route('/timer/<user_id>')
@@ -254,86 +219,91 @@ def dynamics(user_id):
 # --- API МАРШРУТЫ ---
 @app.route('/api/log_session', methods=['POST'])
 def log_timer_session():
-    if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type, expected application/json'}), 400
+    if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
     data = request.json
-    required_keys = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds']
-    if not all(k in data for k in required_keys): 
-        return jsonify({'status': 'error', 'message': f'Missing one or more required fields: {required_keys}'}), 400
+    required = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds']
+    if not all(k in data for k in required): return jsonify({'status': 'error', 'message': f'Missing fields: {required}'}), 400
     
     try:
         user_id = str(data['user_id'])
-        new_task_name_raw = str(data['task_name']).strip()
+        new_task_name = str(data['task_name'])
 
-        # Получаем список уже существующих НОРМАЛИЗОВАННЫХ задач для этого пользователя
+        # Получаем список уже существующих задач для этого пользователя
         all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
-        existing_task_names = [row.get('task_name_normalized') for row in all_user_sessions if row.get('task_name_normalized')]
+        existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
 
         # Нормализуем название с помощью ИИ
-        normalized_task = normalize_task_name_with_ai(new_task_name_raw, existing_task_names)
+        normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
 
         duration = int(data['duration_seconds'])
-        row_to_append = [
+        row = [
             user_id,
-            new_task_name_raw,     # task_name_raw
-            normalized_task,       # task_name_normalized
+            new_task_name,      # task_name_raw
+            normalized_task,    # task_name_normalized
             data['start_time'],
             data['end_time'],
             duration
         ]
-        worksheet_timer_logs.append_row(row_to_append)
-        return jsonify({'status': 'success', 'message': 'Session logged successfully.'})
+        worksheet_timer_logs.append_row(row)
+        return jsonify({'status': 'success'})
     except Exception as e:
-        print(f"Критическая ошибка при сохранении сессии: {e}")
+        print(f"Ошибка сохранения сессии: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/dynamics_data/<user_id>')
 def get_dynamics_data(user_id):
-    empty_response = {'calendars': {}, 'total_weeks': 0, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
     try:
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
-        if not records: return jsonify(empty_response)
+        empty = {'calendars': {}, 'total_weeks': 0, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
+        if not records: return jsonify(empty)
         
         df = pd.DataFrame(records)
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df.dropna(subset=['start_time'], inplace=True)
-        if df.empty: return jsonify(empty_response)
+        if df.empty: return jsonify(empty)
         
-        # Используем нормализованное название задачи, если оно есть, иначе исходное
+        # Используем нормализованное название задачи, если оно есть
         if 'task_name_normalized' in df.columns and df['task_name_normalized'].notna().any():
-            df['task_name_normalized'].fillna(df.get('task_name_raw', ''), inplace=True)
+            if 'task_name_raw' in df.columns:
+                 df['task_name_normalized'].fillna(df['task_name_raw'], inplace=True)
             task_col = 'task_name_normalized'
+        elif 'task_name_raw' in df.columns:
+            task_col = 'task_name_raw'
         else:
-            task_col = 'task_name_raw' if 'task_name_raw' in df.columns else 'task_name'
+            task_col = 'task_name'
         
-        # Календари
-        unique_tasks = df[task_col].unique()
-        calendars = {task: df[df[task_col] == task]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist() for task in unique_tasks}
+        work = df.copy() # Используем все данные, т.к. session_type не всегда есть
+        if work.empty: return jsonify(empty)
         
-        # Активность
-        df['date'] = df['start_time'].dt.date
-        df['hour'] = df['start_time'].dt.hour
-        df['duration_hours'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0) / 3600
+        calendars = {t: work[work[task_col]==t]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
         
-        first_day = df['start_time'].min().date()
-        last_day = datetime.now(timezone.utc).date()
-        total_weeks = max(1, (last_day - first_day).days // 7 + 1)
+        work['date'] = work['start_time'].dt.date
+        work['hour'] = work['start_time'].dt.hour
+        work['duration_hours'] = pd.to_numeric(work['duration_seconds'], errors='coerce').fillna(0) / 3600
         
-        # Активность по дням
-        daily_activity = df.groupby('date')['duration_hours'].sum()
-        all_days_range = pd.date_range(start=daily_activity.index.min(), end=daily_activity.index.max(), freq='D')
-        daily_activity = daily_activity.reindex(all_days_range, fill_value=0)
-        daily_labels = [d.strftime('%Y-%m-%d') for d in daily_activity.index]
-        daily_data = daily_activity.round(2).tolist()
+        first = work['start_time'].min().date()
+        last = datetime.now(timezone.utc).date()
+        weeks = max(1, (last - first).days // 7 + 1)
+        
+        daily = work.groupby('date')['duration_hours'].sum()
+        if daily.empty:
+            all_days_index = []
+            daily_data = []
+        else:
+            all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
+            daily = daily.reindex(all_days, fill_value=0)
+            all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
+            daily_data = daily.tolist()
 
         return jsonify({
             'calendars': calendars,
-            'total_weeks': total_weeks,
-            'activity_by_day': {'labels': daily_labels, 'data': daily_data},
-            'activity_by_hour': df[['start_time', 'hour', 'duration_hours']].to_dict('records') # Отдаем только нужные данные
+            'total_weeks': weeks,
+            'activity_by_day': {'labels': all_days_index, 'data': daily_data},
+            'activity_by_hour': work.to_dict('records')
         })
     except Exception as e:
-        print(f"Критическая ошибка в /api/dynamics_data: {e}")
-        return jsonify(empty_response), 500
+        print(f"Критическая ошибка: {e}")
+        return jsonify(empty), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
