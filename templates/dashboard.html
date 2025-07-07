@@ -5,7 +5,7 @@
 <main class="dashboard-container">
     <header class="dashboard-header">
         <h1>{{ greeting }}, {{ user_id }}</h1>
-        <form action="{{ url_for('login') }}" method="get" style="display: inline;">
+        <form action="{{ url_for('login') }}" method="get">
              <button type="submit" class="logout-button">Выйти</button>
         </form>
     </header>
@@ -21,11 +21,10 @@
     {% if analysis_result %}
     <section class="analysis-result">
         <h2>Результат анализа</h2>
-        <p>{{ analysis_result }}</p>
+        <div>{{ analysis_result | markdown | safe }}</div>
     </section>
     {% endif %}
 
-    <!-- +++ ВОЗВРАЩЕННАЯ ФОРМА ДЛЯ МЫСЛЕЙ +++ -->
     <section class="thought-form">
         <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
             <input type="hidden" name="action" value="save_thought">
@@ -37,7 +36,6 @@
         </form>
     </section>
 
-    <!-- +++ ВОЗВРАЩЕННАЯ НАВИГАЦИЯ С КНОПКОЙ АНАЛИЗА +++ -->
     <nav class="desktop-nav">
         <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
         <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
@@ -48,21 +46,17 @@
     </nav>
 </main>
 
-<!-- +++ МОДАЛЬНОЕ ОКНО ДЛЯ ЗАПУСКА ТАЙМЕРА (логика та же) +++ -->
-<div id="task-modal" class="modal-overlay" style="display: none;">
+<!-- Модальное окно для запуска таймера -->
+<div class="modal-overlay" id="task-modal" style="display: none;">
     <div class="modal-content">
+        <h2>Над чем вы работаете?</h2>
         <form id="task-form">
-            <h2>Над чем вы работаете?</h2>
-            <input type="text" id="task-name-input" name="task" placeholder="Например, 'Работа над проектом X'" required>
-            <input type="hidden" id="modal-user-id" value="{{ user_id }}">
+            <div class="input-group">
+                <input type="text" id="task-name-input" placeholder="Например, 'Разработка новой фичи'" required>
+            </div>
             <button type="submit" class="button">Начать сессию</button>
             <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
         </form>
     </div>
 </div>
-
-<!-- +++ ПЛАВАЮЩАЯ КНОПКА (FAB) ДЛЯ ЗАПУСКА ТАЙМЕРА +++ -->
-<button id="timer-fab" class="timer-fab" title="Запустить таймер">
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-</button>
 {% endblock %}
