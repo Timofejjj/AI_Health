@@ -35,7 +35,6 @@ function hideModals() {
     });
 }
 
-// --- ИСПРАВЛЕНИЕ: Панель теперь учитывает режим 'work' и 'break' ---
 function updatePersistentBar() {
     const bar = document.getElementById('persistent-timer-bar');
     const st = getTimerState();
@@ -89,7 +88,6 @@ function logSession(data) {
 // =======================================================
 //        ИНФРАСТРУКТУРА МОДАЛОВ И FAB
 // =======================================================
-// --- ИСПРАВЛЕНИЕ: FAB теперь проверяет универсальный флаг 'isActive' ---
 function initFabMenu() {
     const fab = document.getElementById('timer-fab');
     const menu = document.getElementById('timer-fab-menu');
@@ -116,7 +114,7 @@ function initModalClose() {
 }
 
 // =======================================================
-//        НОВАЯ ЛОГИКА ТАЙМЕРА (РАБОТА + ПЕРЕРЫВ)
+//        ЛОГИКА ТАЙМЕРА (РАБОТА + ПЕРЕРЫВ)
 // =======================================================
 function initTimerPage() {
     const uid = document.body.dataset.userId;
@@ -139,7 +137,6 @@ function initTimerPage() {
     const breakPresets = breakControls.querySelectorAll('.break-preset-btn');
     taskTitleHeader.textContent = appState.session.taskName;
 
-    // --- НОВАЯ функция для сохранения полного состояния ---
     function saveCurrentState() {
         const stateToSave = {
             isActive: true,
@@ -149,7 +146,6 @@ function initTimerPage() {
             taskName: appState.session.taskName,
             startTime: appState.session.startTime,
             totalDuration: appState.session.mode === 'work' ? appState.session.totalDuration : appState.session.breakDuration,
-            // Сохраняем обе длительности для полного восстановления
             workDuration: appState.session.totalDuration,
             breakDuration: appState.session.breakDuration,
         };
@@ -220,9 +216,10 @@ function initTimerPage() {
         clearInterval(appState.timerInterval);
         const st = getTimerState();
         if (st && st.isActive && st.mode === 'work') {
+            const durationToSend = Math.min(appState.session.elapsedSeconds, appState.session.totalDuration);
             logSession({
                 user_id: uid, task_name: st.taskName, start_time: st.startTime,
-                end_time: new Date().toISOString(), duration_seconds: appState.session.elapsedSeconds
+                end_time: new Date().toISOString(), duration_seconds: durationToSend
             });
         }
         appState.session.isRunning = false;
@@ -268,7 +265,6 @@ function initTimerPage() {
         });
     });
 
-    // --- ИСПРАВЛЕНИЕ: Полное восстановление состояния при загрузке ---
     const existingState = getTimerState();
     if (existingState && existingState.isActive && existingState.taskName === appState.session.taskName) {
         appState.session.mode = existingState.mode;
@@ -288,9 +284,98 @@ function initTimerPage() {
 }
 
 // =======================================================
-//        ДИНАМИКА И ЧАРТЫ (без изменений)
+//        ИСПРАВЛЕННАЯ ЛОГИКА ДИНАМИКИ И ЧАРТОВ
 // =======================================================
-function initDynamicsPage() { /* ... код без изменений ... */ }
+function initDynamicsPage() {
+    const uid = document.body.dataset.userId;
+    const weeksFilter = document.getElementById('weeks-filter');
+    const dayPicker = document.getElementById('day-picker');
+    const ctxDaily = document.getElementById('dailyActivityChart')?.getContext('2d');
+    const ctxHourly = document.getElementById('hourlyActivityChart')?.getContext('2d');
+    let dailyChart, hourlyChart, dataAll;
+
+    async function fetchData() {
+        try {
+            const res = await fetch(`/api/dynamics_data/${uid}`);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            dataAll = await res.json();
+            if (dataAll.error) throw new Error(dataAll.error);
+            
+            renderCalendars(dataAll.calendars);
+            
+            weeksFilter.innerHTML = '';
+            for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
+            weeksFilter.value = Math.min(4, dataAll.total_weeks);
+            
+            dayPicker.value = new Date().toISOString().split('T')[0];
+            
+            renderDaily(weeksFilter.value);
+            renderHourly(dayPicker.value);
+        } catch (e) {
+            console.error('Failed to fetch dynamics data:', e);
+            document.getElementById('calendars-container').innerHTML = '<p>Ошибка загрузки данных. Попробуйте позже.</p>';
+        }
+    }
+
+    function renderCalendars(cals) {
+        const cont = document.getElementById('calendars-container');
+        cont.innerHTML = '';
+        if (!cals || Object.keys(cals).length === 0) {
+            cont.innerHTML = '<p>Нет данных по задачам для отображения.</p>';
+            return;
+        }
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        Object.entries(cals).forEach(([task, dates]) => {
+            const div = document.createElement('div');
+            div.className = 'calendar';
+            let html = `<div class="calendar-header">${task}</div><div class="calendar-body">`;
+            ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(d => html += `<div class="calendar-day header">${d}</div>`);
+            const date = new Date(today.getFullYear(), today.getMonth(), 1);
+            const offset = date.getDay() === 0 ? 6 : date.getDay() - 1;
+            for (let i = 0; i < offset; i++) html += `<div class="calendar-day"></div>`;
+            while (date.getMonth() === today.getMonth()) {
+                const ds = date.toISOString().split('T')[0];
+                let cls = 'calendar-day' + (dates.includes(ds) ? ' active' : '') + (date.getTime() === today.getTime() ? ' today' : '');
+                html += `<div class="${cls}">${date.getDate()}</div>`;
+                date.setDate(date.getDate() + 1);
+            }
+            html += '</div>';
+            div.innerHTML = html;
+            cont.appendChild(div);
+        });
+    }
+
+    function renderDaily(weeks) {
+        if (!dataAll || !ctxDaily) return;
+        const days = weeks * 7;
+        const labels = dataAll.activity_by_day.labels.slice(-days);
+        const vals = dataAll.activity_by_day.data.slice(-days);
+        if (dailyChart) dailyChart.destroy();
+        dailyChart = new Chart(ctxDaily, {
+            type: 'bar',
+            data: { labels, datasets: [{ data: vals, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)'}] },
+            options: { scales: { y: { beginAtZero: true, max: 15 } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function renderHourly(day) {
+        if (!dataAll || !ctxHourly) return;
+        const arr = Array(24).fill(0);
+        dataAll.activity_by_hour.filter(d => d.start_time.startsWith(day)).forEach(s => arr[s.hour] += s.duration_hours);
+        if (hourlyChart) hourlyChart.destroy();
+        hourlyChart = new Chart(ctxHourly, {
+            type: 'bar',
+            data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ data: arr, label: `Часы за ${day}`, backgroundColor: 'rgba(0, 122, 255, 0.6)' }] },
+            options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    if (weeksFilter) weeksFilter.addEventListener('change', () => renderDaily(weeksFilter.value));
+    if (dayPicker) dayPicker.addEventListener('change', () => renderHourly(dayPicker.value));
+
+    fetchData();
+}
 
 // =======================================================
 //        ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
