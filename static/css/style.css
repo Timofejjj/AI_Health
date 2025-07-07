@@ -287,7 +287,15 @@ textarea:focus {
 .timer-progress .progress-bar {
   stroke: var(--primary-color);
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.3s linear;
+  transition: stroke-dashoffset 0.3s linear, stroke 0.3s ease;
+}
+
+.timer-progress .progress-bar.overtime {
+    stroke: var(--orange-color);
+}
+
+.time-display.overtime {
+    color: var(--orange-color);
 }
 
 .timer-task-name {
@@ -302,6 +310,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   margin: 40px 0;
+  position: absolute;
 }
 
 .adjust-btn {
@@ -315,12 +324,14 @@ textarea:focus {
 
 .adjust-btn:disabled {
   color: var(--border-color);
+  cursor: not-allowed;
 }
 
 #time-display {
   font-size: 56px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  transition: color 0.3s ease;
 }
 
 .time-presets {
@@ -338,6 +349,12 @@ textarea:focus {
   border-radius: 20px;
   cursor: pointer;
   font-weight: 500;
+}
+
+.time-preset-btn:disabled {
+    background-color: #e9e9ed;
+    color: #c7c7cc;
+    cursor: not-allowed;
 }
 
 .timer-controls {
@@ -376,6 +393,11 @@ textarea:focus {
 
 .control-btn-main.paused {
   background-color: var(--orange-color);
+}
+
+.control-btn-main:disabled {
+  background-color: #b0b0b0;
+  cursor: not-allowed;
 }
 
 .control-btn-secondary {
@@ -427,6 +449,7 @@ textarea:focus {
   height: 8px;
   border-radius: 50%;
   background-color: var(--green-color);
+  transition: background-color 0.3s ease;
 }
 
 .persistent-timer-bar .task-name {
