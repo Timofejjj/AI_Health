@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Отчёты по Активности{% endblock %}
 {% block content %}
-<div class="dynamics-page" data-user-id="{{ user_id }}">
+<div class="dynamics-page main-content" data-user-id="{{ user_id }}">
     
     <header class="dashboard-header">
         <h1>Отчёты по Активности</h1>
-        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="link-button">← На главную</a>
     </header>
 
     <section class="stats-section">
