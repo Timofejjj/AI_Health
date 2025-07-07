@@ -4,30 +4,28 @@
 {% block content %}
 <div class="timer-page" data-user-id="{{ user_id }}" data-task-name="{{ task_name }}">
     
-    <header class="timer-header">
-        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
-        <h1>{{ task_name }}</h1>
-        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary">Анализ сессий</a>
+    <header class="timer-header page-header">
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="link-button">← На главную</a>
+        <h1 class="timer-task-name">{{ task_name }}</h1>
+        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary button-small">Анализ</a>
     </header>
 
     <div class="timer-container">
-        <div class="timer-circle">
-            <svg class="timer-progress" width="300" height="300" viewBox="0 0 120 120">
-                <circle class="progress-background" cx="60" cy="60" r="54"></circle>
-                <circle class="progress-bar" cx="60" cy="60" r="54" transform="rotate(-90 60 60)"></circle>
-            </svg>
-            <div class="time-adjust-controls">
-                <button id="decrease-time-btn" class="adjust-btn">–</button>
-                <div id="time-display" class="time-display">25:00</div>
-                <button id="increase-time-btn" class="adjust-btn">+</button>
-            </div>
+        <div class="timer-display-box">
+             <div class="timer-session-label">СЕССИЯ</div>
+             <div id="time-display" class="time-display">25:00</div>
         </div>
+    </div>
+    
+    <div class="time-adjust-controls">
+        <button id="decrease-time-btn" class="adjust-btn">–</button>
+        <button id="increase-time-btn" class="adjust-btn">+</button>
     </div>
 
     <div class="time-presets">
         <button class="time-preset-btn" data-minutes="25">25 мин</button>
         <button class="time-preset-btn" data-minutes="50">50 мин</button>
-        <button class="time-preset-btn" data-minutes="60">60 мин</button>
+        <button class="time-preset-btn" data-minutes="90">90 мин</button>
     </div>
 
     <div class="timer-controls">
