@@ -4,7 +4,7 @@
   --secondary-color: #f2f2f7;
   --text-color: #1d1d1f;
   --background-color: #f9f9f9;
-  --container-bg: #f9f9f9;
+  --container-bg: #ffffff;
   --border-color: #e5e5ea;
   --orange-color: #ff9500;
   --green-color: #34c759;
@@ -257,6 +257,7 @@ textarea:focus {
   height: calc(100vh - 32px);
   padding: 16px;
   box-sizing: border-box;
+  text-align: center;
 }
 
 .timer-container {
@@ -266,36 +267,30 @@ textarea:focus {
   align-items: center;
 }
 
-.timer-circle {
-  position: relative;
-  width: 300px;
-  height: 300px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.timer-display-box {
+  border: 2px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px 48px;
+  background-color: var(--container-bg);
+  margin-bottom: 32px;
 }
 
-.timer-progress circle {
-  fill: none;
-  stroke-width: 8;
+.timer-session-label {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #8e8e93;
+  margin-bottom: 8px;
+  transition: color 0.3s;
 }
 
-.timer-progress .progress-background {
-  stroke: var(--border-color);
-}
-
-.timer-progress .progress-bar {
-  stroke: var(--primary-color);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.3s linear, stroke 0.3s ease;
-}
-
-.timer-progress .progress-bar.overtime {
-    stroke: var(--orange-color);
-}
-
-.time-display.overtime {
-    color: var(--orange-color);
+.time-display {
+  font-size: 80px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  transition: color 0.3s;
 }
 
 .timer-task-name {
@@ -309,8 +304,7 @@ textarea:focus {
   gap: 15px;
   align-items: center;
   justify-content: center;
-  margin: 40px 0;
-  position: absolute;
+  margin: 20px 0 40px 0;
 }
 
 .adjust-btn {
@@ -320,18 +314,12 @@ textarea:focus {
   border: none;
   cursor: pointer;
   color: #b0b0b0;
+  line-height: 1;
 }
 
 .adjust-btn:disabled {
   color: var(--border-color);
   cursor: not-allowed;
-}
-
-#time-display {
-  font-size: 56px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  transition: color 0.3s ease;
 }
 
 .time-presets {
@@ -352,8 +340,8 @@ textarea:focus {
 }
 
 .time-preset-btn:disabled {
-    background-color: #e9e9ed;
-    color: #c7c7cc;
+    background-color: #e9ecef;
+    color: #adb5bd;
     cursor: not-allowed;
 }
 
@@ -363,20 +351,6 @@ textarea:focus {
   align-items: center;
   gap: 15px;
   margin-bottom: 20px;
-}
-
-.timer-main-controls {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-}
-
-.timer-main-controls .button-primary {
-  min-width: 150px;
-}
-
-.timer-main-controls .button-primary.paused {
-  background-color: var(--orange-color);
 }
 
 .control-btn-main {
@@ -393,11 +367,6 @@ textarea:focus {
 
 .control-btn-main.paused {
   background-color: var(--orange-color);
-}
-
-.control-btn-main:disabled {
-  background-color: #b0b0b0;
-  cursor: not-allowed;
 }
 
 .control-btn-secondary {
@@ -433,8 +402,10 @@ textarea:focus {
 
 .persistent-timer-bar .timer-info {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+  flex-grow: 1;
+  overflow: hidden;
 }
 
 .persistent-timer-bar .timer-status-indicator {
@@ -442,6 +413,7 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .persistent-timer-bar .status-dot {
@@ -449,18 +421,28 @@ textarea:focus {
   height: 8px;
   border-radius: 50%;
   background-color: var(--green-color);
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s;
 }
 
 .persistent-timer-bar .task-name {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .persistent-timer-bar .time-display {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  padding-left: 12px;
 }
+
+.persistent-timer-bar .button-small {
+  flex-shrink: 0;
+}
+
 
 /* --- FAB & MENU --- */
 .timer-fab, .fab {
@@ -498,6 +480,7 @@ textarea:focus {
   transform: translateY(10px);
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1001;
 }
 
 .timer-fab-menu.visible {
