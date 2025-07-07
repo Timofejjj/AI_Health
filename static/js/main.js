@@ -6,46 +6,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const fabSessionBtn = document.getElementById('fab-menu-session-btn');
     const modal = document.getElementById('task-modal');
     
-    if (fab) {
+    if (fab && fabMenu) {
         fab.addEventListener('click', (e) => {
-            e.stopPropagation(); // Предотвращаем закрытие меню сразу после открытия
+            e.stopPropagation();
             fabMenu.classList.toggle('visible');
         });
 
-        // Закрытие меню при клике вне его
-        document.addEventListener('click', (e) => {
-            if (fabMenu && !fab.contains(e.target) && !fabMenu.contains(e.target)) {
-                fabMenu.classList.remove('visible');
-            }
+        document.addEventListener('click', () => {
+            fabMenu.classList.remove('visible');
         });
         
-        fabSessionBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            fabMenu.classList.remove('visible');
-            const timerState = getTimerState();
-            if (timerState && timerState.isWorkSessionActive) {
-                // Если сессия активна, переходим к ней
-                window.location.href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
-            } else {
-                // Иначе показываем модальное окно для новой сессии
-                if (modal) modal.style.display = 'flex';
-            }
-        });
-    }
-
-    // Закрытие модального окна
-    const closeModalBtn = document.getElementById('close-modal-btn');
-    if (closeModalBtn) {
-        closeModalBtn.addEventListener('click', () => {
-            if(modal) modal.style.display = 'none';
-        });
+        fabMenu.addEventListener('click', (e) => e.stopPropagation());
+        
+        if (fabSessionBtn) {
+            fabSessionBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                fabMenu.classList.remove('visible');
+                const timerState = getTimerState();
+                if (timerState && timerState.isWorkSessionActive) {
+                    window.location.href = `/timer/${timerState.userId}?task=${encodeURIComponent(timerState.taskName)}`;
+                } else {
+                    if (modal) modal.style.display = 'flex';
+                }
+            });
+        }
     }
     
     // --- Инициализация страниц ---
     if (document.querySelector('.timer-page')) initTimer();
     if (document.querySelector('.dynamics-page')) initDynamics();
+    if (document.querySelector('.modal-overlay')) {
+        const taskForm = document.getElementById('task-form');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        if (closeModalBtn) closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
+        if (taskForm) {
+            taskForm.addEventListener('submit', (e) => {
+                 e.preventDefault();
+                 const taskName = document.getElementById('task-name-input').value;
+                 const userId = document.body.dataset.userId;
+                 window.location.href = `/timer/${userId}?task=${encodeURIComponent(taskName)}`;
+            });
+        }
+    }
 
-    // Обновление текста кнопки в FAB меню при загрузке страницы
     updateFabButton();
 });
 
@@ -77,14 +80,6 @@ function logSession(sessionData) {
     if (navigator.sendBeacon) {
         const blob = new Blob([JSON.stringify(sessionData)], { type: 'application/json' });
         navigator.sendBeacon('/api/log_session', blob);
-    } else {
-        // Fallback для очень старых браузеров
-        fetch('/api/log_session', {
-            method: 'POST',
-            body: JSON.stringify(sessionData),
-            headers: { 'Content-Type': 'application/json' },
-            keepalive: true
-        });
     }
 }
 
@@ -93,7 +88,6 @@ function logSession(sessionData) {
 //                    ЛОГИКА ТАЙМЕРА
 // =======================================================
 function initTimer() {
-    // --- Элементы UI ---
     const timeDisplay = document.getElementById('time-display');
     const decreaseBtn = document.getElementById('decrease-time-btn');
     const increaseBtn = document.getElementById('increase-time-btn');
@@ -102,21 +96,18 @@ function initTimer() {
     const presets = document.querySelectorAll('.time-preset-btn');
     const timerPage = document.querySelector('.timer-page');
     const progressBar = document.querySelector('.timer-progress .progress-bar');
-    const radius = progressBar.r.baseVal.value;
-    const circumference = 2 * Math.PI * radius;
+    const circumference = 2 * Math.PI * progressBar.r.baseVal.value;
     progressBar.style.strokeDasharray = `${circumference} ${circumference}`;
 
     const userId = timerPage.dataset.userId;
     const taskName = timerPage.dataset.taskName;
 
-    // --- Состояние ---
     let totalDurationSeconds = 25 * 60;
     let elapsedSeconds = 0;
     let timerInterval = null;
     let isRunning = false;
     let lastPauseStartTime = null;
 
-    // --- Обновление UI ---
     function updateUI() {
         const remainingSeconds = totalDurationSeconds - elapsedSeconds;
         const minutes = Math.floor(remainingSeconds / 60);
@@ -124,8 +115,7 @@ function initTimer() {
         timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         
         const progressPercent = (elapsedSeconds / totalDurationSeconds) * 100;
-        const offset = circumference - (progressPercent / 100) * circumference;
-        progressBar.style.strokeDashoffset = offset;
+        progressBar.style.strokeDashoffset = circumference - (progressPercent / 100) * circumference;
         
         decreaseBtn.disabled = totalDurationSeconds <= 60 || isRunning;
         increaseBtn.disabled = totalDurationSeconds >= 180 * 60 || isRunning;
@@ -143,34 +133,26 @@ function initTimer() {
     function setDuration(minutes) {
         if (isRunning) return;
         totalDurationSeconds = Math.max(60, Math.min(180 * 60, minutes * 60));
-        elapsedSeconds = 0;
+        if (elapsedSeconds > totalDurationSeconds) elapsedSeconds = totalDurationSeconds;
         updateUI();
     }
 
-    // --- Логика таймера ---
     function start() {
         if (isRunning) return;
         isRunning = true;
         
-        // Создаем новое состояние сессии
-        let state = getTimerState();
-        if (!state || !state.isWorkSessionActive) {
-            state = {
-                isWorkSessionActive: true,
-                userId, taskName,
-                workSessionStartTime: new Date().toISOString(),
-                totalDurationSeconds,
-                totalElapsedSecondsAtStart: elapsedSeconds
-            };
-        }
+        const state = {
+            isWorkSessionActive: true, userId, taskName,
+            workSessionStartTime: new Date().toISOString(),
+            totalDurationSeconds,
+            totalElapsedSecondsAtStart: elapsedSeconds
+        };
         setTimerState(state);
         
-        // Логируем конец предыдущей паузы, если она была
         if (lastPauseStartTime) {
             logSession({
                 session_type: 'pause', userId, taskName,
-                start_time: lastPauseStartTime,
-                end_time: new Date().toISOString(),
+                start_time: lastPauseStartTime, end_time: new Date().toISOString(),
                 duration_seconds: Math.floor((new Date() - new Date(lastPauseStartTime)) / 1000)
             });
             lastPauseStartTime = null;
@@ -184,13 +166,11 @@ function initTimer() {
             elapsedSeconds = initialElapsed + delta;
             
             if (elapsedSeconds >= totalDurationSeconds) {
-                // Завершаем сессию, когда время истекло
-                updateUI();
-                stop(true); // true означает, что сессия завершена успешно
+                stop(true);
             } else {
                 updateUI();
             }
-        }, 250); // Интервал почаще для плавности
+        }, 250);
         
         updateFabButton();
         updateUI();
@@ -201,8 +181,6 @@ function initTimer() {
         isRunning = false;
         clearInterval(timerInterval);
         lastPauseStartTime = new Date().toISOString();
-        // При паузе состояние сессии в localStorage остается, чтобы ее можно было продолжить
-        updateFabButton();
         updateUI();
     }
     
@@ -210,20 +188,9 @@ function initTimer() {
         clearInterval(timerInterval);
         const state = getTimerState();
         if (state && state.isWorkSessionActive) {
-            // Если сессия была на паузе, сначала логируем паузу
-            if (lastPauseStartTime) {
-                logSession({
-                    session_type: 'pause', userId, taskName,
-                    start_time: lastPauseStartTime,
-                    end_time: new Date().toISOString(),
-                    duration_seconds: Math.floor((new Date() - new Date(lastPauseStartTime)) / 1000)
-                });
-            }
-            // Затем логируем саму рабочую сессию
             logSession({
                 session_type: 'work', userId, taskName,
-                start_time: state.workSessionStartTime,
-                end_time: new Date().toISOString(),
+                start_time: state.workSessionStartTime, end_time: new Date().toISOString(),
                 duration_seconds: elapsedSeconds
             });
         }
@@ -231,20 +198,13 @@ function initTimer() {
         window.location.href = `/dashboard/${userId}`;
     }
 
-    // --- Обработчики ---
     startPauseBtn.addEventListener('click', () => isRunning ? pause() : start());
     stopBtn.addEventListener('click', () => stop(false));
     decreaseBtn.addEventListener('click', () => setDuration(totalDurationSeconds / 60 - 5));
     increaseBtn.addEventListener('click', () => setDuration(totalDurationSeconds / 60 + 5));
     presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    // Обработка закрытия страницы
-    window.addEventListener('unload', () => {
-        if (isRunning) {
-             // Если таймер работал, сессия считается прерванной и сохраняется
-             stop(false);
-        }
-    });
+    window.addEventListener('unload', () => { if (isRunning) stop(false); });
 
     updateUI();
 }
@@ -268,12 +228,8 @@ function initDynamics() {
             if (!response.ok) throw new Error('Failed to fetch data');
             allData = await response.json();
             
-            if (allData.error) {
-                console.error(allData.error);
-                return;
-            }
+            if (allData.error) { console.error(allData.error); return; }
 
-            // Заполняем фильтр по неделям
             weeksFilter.innerHTML = '';
             for (let i = 1; i <= allData.total_weeks; i++) {
                 const option = new Option(`Последние ${i} нед.`, i);
@@ -281,17 +237,15 @@ function initDynamics() {
             }
             weeksFilter.value = Math.min(4, allData.total_weeks);
             
-            // Устанавливаем сегодняшний день в date-picker
             dayPicker.value = new Date().toISOString().split('T')[0];
 
             renderDailyChart(weeksFilter.value);
             renderHourlyChart(dayPicker.value);
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     }
     
     function renderDailyChart(weeksToShow) {
+        if (!ctxDaily || !allData) return;
         const daysToShow = weeksToShow * 7;
         const labels = allData.activity_by_day.labels.slice(-daysToShow);
         const data = allData.activity_by_day.data.slice(-daysToShow);
@@ -305,12 +259,12 @@ function initDynamics() {
     }
     
     function renderHourlyChart(dateString) {
+        if (!ctxHourly || !allData) return;
         const hourlyData = Array(24).fill(0);
-        const dayData = allData.activity_by_hour.filter(d => d.start_time.startsWith(dateString));
-        
-        dayData.forEach(session => {
-            hourlyData[session.hour] += session.duration_hours;
-        });
+        if (allData.activity_by_hour) {
+            const dayData = allData.activity_by_hour.filter(d => d.start_time.startsWith(dateString));
+            dayData.forEach(session => { hourlyData[session.hour] += session.duration_hours; });
+        }
         
         if (hourlyChart) hourlyChart.destroy();
         hourlyChart = new Chart(ctxHourly, {
