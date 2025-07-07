@@ -14,7 +14,7 @@
 body {
   margin: 0;
   padding-bottom: 80px;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--background-color);
   color: var(--text-color);
 }
@@ -121,35 +121,20 @@ textarea:focus {
   text-decoration: none;
 }
 
-/* --- LIST ITEMS --- */
-.list-item {
-  background-color: #fff;
-  border: 1px solid var(--border-color);
-  padding: 16px;
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-
-.meta {
-  font-size: 12px;
-  color: #8a8a8e;
-  margin-bottom: 8px;
-  font-family: monospace;
-}
-
-.content {
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-/* --- ANALYSIS RESULT --- */
+/* --- LIST ITEMS & ANALYSIS --- */
+.list-item,
 .analysis-result {
   background-color: #fff;
   border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.analysis-result {
   border-radius: 16px;
   padding: 20px 24px;
-  margin-bottom: 24px;
-  line-height: 1.6;
 }
 
 .analysis-result h2 {
@@ -165,17 +150,8 @@ textarea:focus {
   color: var(--primary-color);
 }
 
-.analysis-result p,
-.analysis-result ul {
-  margin-bottom: 12px;
-}
-
 .analysis-result ul {
   padding-left: 20px;
-}
-
-.analysis-result li {
-  margin-bottom: 8px;
 }
 
 /* --- TIMER PAGE --- */
@@ -201,12 +177,6 @@ textarea:focus {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-.timer-progress {
-  position: absolute;
-  top: 0;
-  left: 0;
 }
 
 .timer-progress circle {
@@ -283,7 +253,6 @@ textarea:focus {
   border: none;
   border-radius: 50px;
   cursor: pointer;
-  text-align: center;
   transition: background-color 0.2s;
 }
 
@@ -312,6 +281,10 @@ textarea:focus {
   background-color: #1d1d1f;
   color: #fff;
   z-index: 2000;
+}
+
+.persistent-timer-bar.visible {
+  display: flex;
 }
 
 .persistent-timer-bar .timer-info {
@@ -385,78 +358,6 @@ textarea:focus {
   background-color: var(--secondary-color);
 }
 
-/* --- DYNAMICS / REPORTS --- */
-.chart-filters {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-#weeks-filter,
-#day-picker {
-  padding: 8px;
-  font-family: inherit;
-  font-size: 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.chart-container {
-  background-color: #fff;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.calendars-grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-}
-
-.calendar {
-  background-color: #fff;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.calendar-header {
-  margin-bottom: 10px;
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.calendar-body {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-}
-
-.calendar-day {
-  aspect-ratio: 1 / 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 12px;
-  border-radius: 4px;
-}
-
-.calendar-day.header {
-  color: #8a8a8e;
-  font-weight: 500;
-}
-
-.calendar-day.today {
-  box-shadow: 0 0 0 2px var(--primary-color);
-}
-
-.calendar-day.active {
-  background-color: var(--green-color);
-  color: #fff;
-}
-
 /* --- RESPONSIVE LAYOUT --- */
 @media (min-width: 768px) {
   body {
@@ -480,4 +381,3 @@ textarea:focus {
   }
 }
 ```
-
