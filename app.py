@@ -262,11 +262,19 @@ def get_dynamics_data(user_id):
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
         
-        if 'session_type' not in df.columns: df['session_type'] = 'work'
-        work = df[df['session_type'] == 'work'].copy()
+        # Используем нормализованное название задачи, если оно есть
+        if 'task_name_normalized' in df.columns and df['task_name_normalized'].notna().any():
+            if 'task_name_raw' in df.columns:
+                 df['task_name_normalized'].fillna(df['task_name_raw'], inplace=True)
+            task_col = 'task_name_normalized'
+        elif 'task_name_raw' in df.columns:
+            task_col = 'task_name_raw'
+        else:
+            task_col = 'task_name'
+        
+        work = df.copy() # Используем все данные, т.к. session_type не всегда есть
         if work.empty: return jsonify(empty)
-
-        task_col = 'task_name_raw' if 'task_name_raw' in work.columns else 'task_name'
+        
         calendars = {t: work[work[task_col]==t]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
         
         work['date'] = work['start_time'].dt.date
