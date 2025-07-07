@@ -7,7 +7,7 @@
     <header class="timer-header">
         <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← На главную</a>
         <h1>{{ task_name }}</h1>
-        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary">К отчётам</a>
+        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary">Анализ сессий</a>
     </header>
 
     <div class="timer-container">
@@ -16,7 +16,6 @@
                 <circle class="progress-background" cx="60" cy="60" r="54" stroke-width="8"></circle>
                 <circle class="progress-bar" cx="60" cy="60" r="54" stroke-width="8" transform="rotate(-90 60 60)"></circle>
             </svg>
-            <!-- Новые элементы управления временем, вставленные внутрь круга -->
             <div class="time-adjust-controls">
                 <button id="decrease-time-btn" class="adjust-btn">–</button>
                 <div id="time-display" class="time-display">25:00</div>
@@ -25,14 +24,12 @@
         </div>
     </div>
 
-    <!-- Обновленные пресеты времени -->
     <div class="time-presets">
         <button class="time-preset-btn" data-minutes="25">25 мин</button>
         <button class="time-preset-btn" data-minutes="50">50 мин</button>
         <button class="time-preset-btn" data-minutes="60">60 мин</button>
     </div>
 
-    <!-- Обновленные кнопки управления сессией -->
     <div class="timer-controls">
         <button id="start-pause-resume-btn" class="control-btn-main">Старт</button>
         <button id="stop-btn" class="control-btn-secondary">Завершить</button>
