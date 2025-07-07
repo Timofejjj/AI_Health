@@ -5,8 +5,6 @@
     --text-color: #1d1d1f;
     --background-color: #f9f9f9;
     --border-color: #e5e5ea;
-    --red-color: #ff3b30;
-    --green-color: #34c759;
     --orange-color: #ff9500;
 }
 
@@ -18,21 +16,14 @@ body {
     padding-bottom: 80px;
 }
 
-h1, h2 { margin: 0; }
+h1, h2, h3, h4 { margin: 0; font-weight: 700; }
 a { color: var(--primary-color); text-decoration: none; }
 
 /* --- КОМПОНЕНТЫ --- */
 .button {
-    display: inline-block;
-    background-color: var(--primary-color);
-    color: white;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: 500;
-    text-align: center;
+    display: inline-block; background-color: var(--primary-color); color: white;
+    padding: 12px 20px; border: none; border-radius: 12px; cursor: pointer;
+    font-size: 16px; font-weight: 500; text-align: center;
     transition: background-color 0.2s, transform 0.1s;
 }
 .button:hover { background-color: #005ecb; }
@@ -41,15 +32,25 @@ a { color: var(--primary-color); text-decoration: none; }
 .button-secondary:hover { background-color: #e5e5ea; }
 .button.button-small { padding: 6px 12px; font-size: 14px; }
 
+/* --- ФОРМЫ И ВВОД --- */
+.input-group { margin-bottom: 16px; }
+.input-group label { display: block; font-weight: 500; margin-bottom: 8px; }
+textarea, input[type="text"] {
+    width: 100%; padding: 12px; border: 1px solid var(--border-color);
+    border-radius: 12px; font-size: 16px; box-sizing: border-box;
+    background-color: #fff; font-family: inherit;
+}
+textarea { resize: vertical; min-height: 120px; }
+textarea:focus, input[type="text"]:focus {
+    outline: none; border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
 /* --- ГЛАВНЫЙ ЭКРАН (DASHBOARD) --- */
 .dashboard-container { padding: 16px; }
 .dashboard-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 24px; flex-wrap: wrap; gap: 10px;
 }
 .dashboard-header h1 { font-size: 24px; }
 .logout-button {
@@ -58,6 +59,35 @@ a { color: var(--primary-color); text-decoration: none; }
 }
 .thought-form, .analysis-result { margin-bottom: 24px; }
 .desktop-nav { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* Стили для вывода анализа */
+.analysis-result {
+    background-color: #fff; padding: 20px 24px; border-radius: 16px;
+    border: 1px solid var(--border-color); line-height: 1.6;
+}
+.analysis-result h2 {
+    font-size: 20px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+.analysis-result h3 {
+    font-size: 18px; margin-top: 24px; margin-bottom: 12px;
+    color: var(--primary-color);
+}
+.analysis-result p { margin-bottom: 12px; }
+.analysis-result ul, .analysis-result ol { padding-left: 20px; margin-bottom: 12px; }
+.analysis-result li { margin-bottom: 8px; }
+.analysis-result strong { font-weight: 700; }
+
+/* --- СТРАНИЦА МЫСЛЕЙ --- */
+.thoughts-container { padding: 16px; }
+.thoughts-header { display: flex; align-items: center; margin-bottom: 24px; }
+.back-button { font-size: 24px; margin-right: 16px; font-weight: 500; }
+.list-item {
+    background-color: #fff; border: 1px solid var(--border-color);
+    padding: 16px; border-radius: 12px; margin-bottom: 12px;
+}
+.meta { font-size: 12px; color: #8a8a8e; margin-bottom: 8px; font-family: monospace; }
+.content { line-height: 1.6; white-space: pre-wrap; }
 
 /* --- МОДАЛЬНОЕ ОКНО --- */
 .modal-overlay {
@@ -71,53 +101,22 @@ a { color: var(--primary-color); text-decoration: none; }
 }
 .modal-content form { display: flex; flex-direction: column; gap: 12px; }
 
-/* --- СТРАНИЦА ТАЙМЕРА --- */
-.timer-page { padding: 16px; }
-.timer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.timer-container { display: flex; justify-content: center; align-items: center; margin: 20px 0; }
-.timer-circle { position: relative; width: 300px; height: 300px; }
-.timer-progress .progress-background { fill: none; stroke: var(--border-color); }
-.timer-progress .progress-bar { fill: none; stroke: var(--primary-color); stroke-linecap: round; transition: stroke-dashoffset 0.3s linear; }
-.time-adjust-controls { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; gap: 15px; }
-.adjust-btn { font-size: 40px; font-weight: 300; color: var(--primary-color); background: none; border: none; cursor: pointer; width: 50px; height: 50px; line-height: 50px; }
-.adjust-btn:disabled { color: var(--border-color); cursor: not-allowed; }
-#time-display { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.time-presets { display: flex; justify-content: center; gap: 12px; margin-bottom: 24px; }
-.time-preset-btn { background-color: var(--secondary-color); color: var(--primary-color); border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; }
-.time-preset-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.timer-controls { display: flex; flex-direction: column; align-items: center; gap: 15px; }
-.control-btn-main { background-color: var(--primary-color); color: white; border: none; padding: 15px 40px; border-radius: 50px; font-size: 20px; cursor: pointer; transition: background-color 0.2s; }
-.control-btn-main.paused { background-color: var(--orange-color); }
-.control-btn-secondary { background: none; color: var(--text-color); border: none; font-size: 16px; cursor: pointer; text-decoration: underline; }
-
-/* --- СТРАНИЦА ОТЧЕТОВ (DYNAMICS) --- */
-.dynamics-page { padding: 16px; }
-.stats-section { margin-bottom: 40px; }
-.stats-section h2 { margin-bottom: 16px; }
-.chart-filters { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
-#weeks-filter, #day-picker { padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); font-family: inherit; font-size: 14px; }
-.chart-container { background-color: #fff; padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); }
-
 /* --- FAB и МЕНЮ --- */
 .timer-fab {
     position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
     background-color: var(--primary-color); color: white; border-radius: 50%;
     border: none; display: flex; justify-content: center; align-items: center;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); cursor: pointer; z-index: 1002;
-    transition: transform 0.2s ease-in-out;
 }
-.timer-fab:hover { transform: scale(1.05); }
-.timer-fab svg { width: 28px; height: 28px; }
-
 .timer-fab-menu {
     position: fixed; bottom: 90px; right: 24px; background-color: white;
     border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    border: 1px solid var(--border-color); z-index: 1001; overflow: hidden;
-    opacity: 0; transform: translateY(10px) scale(0.95); pointer-events: none;
+    border: 1px solid var(--border-color); z-index: 1001;
+    opacity: 0; transform: translateY(10px); pointer-events: none;
     transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.timer-fab-menu.visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-.fab-menu-item { display: block; padding: 12px 20px; color: var(--text-color); text-decoration: none; font-weight: 500; white-space: nowrap; }
+.timer-fab-menu.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.fab-menu-item { display: block; padding: 12px 20px; color: var(--text-color); font-weight: 500; }
 .fab-menu-item:hover { background-color: var(--secondary-color); }
 .fab-menu-item:not(:last-child) { border-bottom: 1px solid var(--border-color); }
 
@@ -125,7 +124,7 @@ a { color: var(--primary-color); text-decoration: none; }
 @media (min-width: 768px) {
     body {
         padding-bottom: 0; display: flex; justify-content: center;
-        align-items: flex-start; padding-top: 5vh; padding-left: 24px; padding-right: 24px;
+        align-items: flex-start; padding-top: 5vh;
     }
     .main-content { max-width: 700px; width: 100%; }
     .timer-fab { bottom: 40px; right: 40px; }
