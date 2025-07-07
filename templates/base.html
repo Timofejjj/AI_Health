@@ -9,22 +9,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<!-- ИСПРАВЛЕНИЕ: Передаем user_id только если он определен -->
 <body data-user-id="{{ user_id if user_id else '' }}">
     
     <div class="main-content">
         {% block content %}{% endblock %}
     </div>
 
-    <!-- ИСПРАВЛЕНИЕ: Весь блок с таймером и меню показывается ТОЛЬКО если user_id известен -->
     {% if user_id %}
-        <!-- Панель активного таймера (появляется внизу, если таймер запущен) -->
+        <!-- Панель активного таймера -->
         <div id="persistent-timer-bar" class="persistent-timer-bar" style="display: none;">
             <div class="timer-info">
                 <span class="task-name"></span>
                 <span class="time-display"></span>
             </div>
-            <a href="#" id="return-to-timer-btn" class="button button-small">Перейти к таймеру</a>
+            <a href="#" id="return-to-timer-btn" class="button button-small">К таймеру</a>
         </div>
 
         <!-- Плавающая кнопка (FAB) -->
@@ -32,19 +30,15 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         </button>
 
-        <!-- Всплывающее меню для FAB (появляется при клике на кнопку) -->
+        <!-- Всплывающее меню для FAB -->
         <div id="timer-fab-menu" class="timer-fab-menu">
             <a href="#" id="fab-menu-session-btn" class="fab-menu-item">Начать сессию</a>
-            <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="fab-menu-item">История анализов</a>
             <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
         </div>
     {% endif %}
 
-    <!-- Подключение библиотек для графиков -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    
-    <!-- Наш основной скрипт, управляющий всей логикой -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
 </body>
