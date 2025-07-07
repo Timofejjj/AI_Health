@@ -4,7 +4,7 @@ import gspread
 import locale 
 import pandas as pd
 import google.generativeai as genai
-import markdown # <-- Добавляем новый импорт
+import markdown
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from datetime import datetime, timezone
 from dateutil import parser
@@ -14,10 +14,8 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Регистрируем фильтр для преобразования Markdown в HTML
 @app.template_filter('markdown')
 def markdown_filter(s):
-    # 'safe_mode' больше не используется, вместо него санитайзеры, но для простоты уберем
     return markdown.markdown(s, extensions=['fenced_code', 'tables'])
 
 try:
@@ -31,7 +29,6 @@ worksheet_analyses = None
 worksheet_timer_logs = None
 
 try:
-    # Проверяем наличие переменной окружения
     google_creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if not google_creds_json:
         raise ValueError("Переменная окружения GOOGLE_CREDENTIALS_JSON не установлена.")
@@ -56,7 +53,6 @@ try:
         print("✅ Модель Gemini успешно настроена.")
     else:
         gemini_model = None
-        print("⚠️  Предупреждение: GEMINI_API_KEY не установлен. Анализ будет недоступен.")
 except Exception as e:
     gemini_model = None
     print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
@@ -129,16 +125,16 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
 {timer_summary}
 
 # АНАЛИЗ И СТРУКТУРА ОТВЕТА
-Действуй как мой личный когнитивный аналитик и стратегический коуч. Твой ответ должен быть структурирован в соответствии с форматом, указанным ниже. Используй Markdown для форматирования.
+Действуй как мой личный когнитивный аналитик. Твой ответ должен быть структурирован. Используй Markdown.
 
 ### 1. Краткое резюме и главная тема периода
 *(В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные из мыслей и активности.)*
 
 ### 2. Связь между работой и мыслями
-*(Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания". Или: "После продуктивной сессии по 'Дизайну' твои мысли стали более оптимистичными".)*
+*(Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания".)*
 
 ### 3. Анализ паттернов продуктивности
-*(Оцени соотношение времени работы и пауз. Есть ли признаки выгорания (длинные, частые паузы), высокой концентрации (длинные рабочие сессии) или прокрастинации (короткая работа, затем длинная пауза)?)*
+*(Оцени соотношение времени работы и пауз. Есть ли признаки выгорания, высокой концентрации или прокрастинации?)*
 
 ### 4. Рекомендации
 *   **Совет 1:** [Дай один конкретный, действенный совет].
@@ -168,35 +164,25 @@ def dashboard(user_id):
         if action == 'save_thought':
             thought_content = request.form.get('thought')
             if thought_content:
-                try:
-                    worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
-                    flash("Мысль сохранена!", "success")
-                except Exception as e:
-                    flash(f"Ошибка сохранения: {e}", "error")
+                worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought_content])
+                flash("Мысль сохранена!", "success")
             return redirect(url_for('dashboard', user_id=user_id))
         
         elif action == 'analyze':
             all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
             all_timer_logs = get_data_from_sheet(worksheet_timer_logs, user_id)
             all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
-            
             last_analysis_time = get_last_analysis_timestamp(all_analyses)
             new_thoughts = get_new_data(all_thoughts, last_analysis_time, 'timestamp')
             new_timer_logs = get_new_data(all_timer_logs, last_analysis_time, 'start_time')
-            
             if new_thoughts or new_timer_logs:
                 analysis_result = generate_analysis_report(new_thoughts, new_timer_logs)
-                try:
-                    all_timestamps = [parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp')] + \
-                                     [parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time')]
-                    if all_timestamps:
-                        latest_ts = max(all_timestamps)
-                        worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_ts.isoformat(), analysis_result])
-                except Exception as e:
-                    flash(f"Не удалось сохранить отчет анализа: {e}", "error")
+                all_timestamps = [parser.parse(t['timestamp']) for t in new_thoughts if t.get('timestamp')] + [parser.parse(l['start_time']) for l in new_timer_logs if l.get('start_time')]
+                if all_timestamps:
+                    latest_ts = max(all_timestamps)
+                    worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_ts.isoformat(), analysis_result])
             else:
                 analysis_result = "Нет новых мыслей или сессий для анализа."
-                
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
@@ -228,7 +214,6 @@ def log_timer_session():
     try:
         duration = int(data.get('duration_seconds'))
         if duration < 1: return jsonify({'status': 'ok', 'message': 'Session too short'})
-        # Записываем все поля как строки для надежности
         worksheet_timer_logs.append_row([str(data.get(f)) for f in required_fields])
         return jsonify({'status': 'success'})
     except Exception as e:
@@ -239,21 +224,25 @@ def log_timer_session():
 def get_dynamics_data(user_id):
     try:
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
-        empty_response = {'total_weeks': 0, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
+        empty_response = {'calendars': {}, 'total_weeks': 0, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
         if not records: return jsonify(empty_response)
 
         df = pd.DataFrame(records)
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
-        df['duration_seconds'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0)
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty_response)
 
         work_df = df[df['session_type'] == 'work'].copy()
         if work_df.empty: return jsonify(empty_response)
 
+        calendars = {}
+        for task_name in work_df['task_name'].unique():
+             task_dates = work_df[work_df['task_name'] == task_name]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist()
+             calendars[task_name] = task_dates
+
         work_df.loc[:, 'date'] = work_df['start_time'].dt.date
         work_df.loc[:, 'hour'] = work_df['start_time'].dt.hour
-        work_df.loc[:, 'duration_hours'] = work_df['duration_seconds'] / 3600
+        work_df.loc[:, 'duration_hours'] = pd.to_numeric(work_df['duration_seconds'], errors='coerce').fillna(0) / 3600
 
         first_day = work_df['start_time'].min().date()
         last_day = datetime.now(timezone.utc).date()
@@ -264,6 +253,7 @@ def get_dynamics_data(user_id):
         daily_activity = daily_activity.reindex(all_days.date, fill_value=0)
         
         return jsonify({
+            'calendars': calendars,
             'total_weeks': total_weeks,
             'activity_by_day': {
                 'labels': daily_activity.index.strftime('%Y-%m-%d').tolist(),
