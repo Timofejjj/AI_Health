@@ -7,11 +7,13 @@ const appState = {
     session: {
         startTime: null,
         isRunning: false,
+        isOvertime: false,
         taskName: null,
         elapsedSeconds: 0,
         totalDuration: 25 * 60 // По умолчанию 25 минут
     },
-    timerInterval: null
+    timerInterval: null,
+    isStopping: false // Флаг для предотвращения двойного логгирования при выходе
 };
 
 function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
@@ -35,23 +37,40 @@ function hideModals() {
 
 function updatePersistentBar() {
     const bar = document.getElementById('persistent-timer-bar');
-    const st = getTimerState();
     if (!bar) return;
+
+    // Очищаем старый интервал, если он есть
+    if (bar.intervalId) clearInterval(bar.intervalId);
+
+    const st = getTimerState();
     if (st && st.isWorkSessionActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.taskName;
         bar.querySelector('#return-to-timer-btn').href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
-        setInterval(() => {
-            const elapsed = Math.floor((Date.now() - new Date(st.workSessionStartTime)) / 1000);
+
+        bar.intervalId = setInterval(() => {
+            let elapsed = st.elapsedSecondsOnSave;
+            if (st.isRunning) {
+                elapsed += (Date.now() - st.lastSaveTimestamp) / 1000;
+            }
+
             const remaining = st.totalDurationSeconds - elapsed;
-            const minutes = Math.floor(Math.abs(remaining) / 60);
-            const seconds = Math.abs(remaining) % 60;
-            bar.querySelector('.time-display').textContent = `${remaining < 0 ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            const isOvertime = remaining < 0;
+            const displayTime = Math.abs(remaining);
+            const minutes = Math.floor(displayTime / 60);
+            const seconds = Math.floor(displayTime % 60);
+
+            bar.querySelector('.time-display').textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            const statusDot = bar.querySelector('.status-dot');
+            if (statusDot) {
+                statusDot.style.backgroundColor = isOvertime ? 'var(--orange-color)' : 'var(--green-color)';
+            }
         }, 1000);
     } else {
         bar.classList.remove('visible');
     }
 }
+
 
 // =======================================================
 //        API ЛОГИРОВАНИЕ
@@ -136,15 +155,14 @@ function initModalClose() {
 //        ТАЙМЕРНАЯ ЛОГИКА
 // =======================================================
 function initTimerPage() {
-    const body = document.querySelector('body');
-    const uid = body.dataset.userId;
+    const uid = document.body.dataset.userId;
     appState.userId = uid;
     const params = new URLSearchParams(location.search);
     appState.session.taskName = params.get('task') || 'Без названия';
-    
-    const taskNameEl = document.querySelector('.timer-task-name');
+
+    const taskNameEl = document.querySelector('.timer-header h1');
     if (taskNameEl) taskNameEl.textContent = appState.session.taskName;
-    
+
     const timeDisplay = document.querySelector('.time-display');
     const startPauseBtn = document.querySelector('.control-btn-main');
     const stopBtn = document.querySelector('.control-btn-secondary');
@@ -154,27 +172,59 @@ function initTimerPage() {
     const progressBar = document.querySelector('.timer-progress .progress-bar');
     const circumference = progressBar ? 2 * Math.PI * progressBar.r.baseVal.value : 0;
 
-    let pauseStart = null;
+    function saveState() {
+        if (!appState.session.startTime) return;
+        const stateToSave = {
+            isWorkSessionActive: true,
+            userId: appState.userId,
+            taskName: appState.session.taskName,
+            workSessionStartTime: appState.session.startTime,
+            totalDurationSeconds: appState.session.totalDuration,
+            isRunning: appState.session.isRunning,
+            elapsedSecondsOnSave: appState.session.elapsedSeconds,
+            lastSaveTimestamp: Date.now()
+        };
+        setTimerState(stateToSave);
+    }
 
     function updateUI() {
-        const remaining = appState.session.totalDuration - appState.session.elapsedSeconds;
-        const minutes = Math.floor(Math.abs(remaining) / 60);
-        const seconds = Math.abs(remaining) % 60;
-        timeDisplay.textContent = `${remaining < 0 ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        const isSessionActive = appState.session.elapsedSeconds > 0 || appState.session.isRunning;
+        const displayTime = appState.session.isOvertime
+            ? appState.session.elapsedSeconds - appState.session.totalDuration
+            : appState.session.totalDuration - appState.session.elapsedSeconds;
+
+        const minutes = Math.floor(Math.abs(displayTime) / 60);
+        const seconds = Math.floor(Math.abs(displayTime) % 60);
+
+        timeDisplay.textContent = `${appState.session.isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        timeDisplay.classList.toggle('overtime', appState.session.isOvertime);
+        
         if (progressBar) {
-            const progress = appState.session.elapsedSeconds / appState.session.totalDuration;
-            progressBar.style.strokeDashoffset = circumference * (1 - progress);
+            progressBar.classList.toggle('overtime', appState.session.isOvertime);
+            if(appState.session.isOvertime) {
+                progressBar.style.strokeDashoffset = 0;
+            } else {
+                const progress = Math.min(1, appState.session.elapsedSeconds / appState.session.totalDuration);
+                progressBar.style.strokeDashoffset = circumference * (1 - progress);
+            }
         }
-        startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds ? 'Продолжить' : 'Старт');
+
+        if (appState.session.isOvertime) {
+            startPauseBtn.textContent = 'Завершено';
+            startPauseBtn.disabled = true;
+        } else {
+            startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (isSessionActive ? 'Продолжить' : 'Старт');
+            startPauseBtn.disabled = false;
+        }
+        
         startPauseBtn.classList.toggle('paused', appState.session.isRunning);
-        decreaseBtn.disabled = appState.session.isRunning || appState.session.totalDuration <= 60;
-        increaseBtn.disabled = appState.session.isRunning || appState.session.totalDuration >= 180 * 60;
-        presets.forEach(p => p.disabled = appState.session.isRunning);
-        updatePersistentBar();
+        decreaseBtn.disabled = isSessionActive;
+        increaseBtn.disabled = isSessionActive;
+        presets.forEach(p => p.disabled = isSessionActive);
     }
 
     function setDuration(minutes) {
-        if (appState.session.isRunning) return;
+        if (appState.session.isRunning || appState.session.elapsedSeconds > 0) return;
         appState.session.totalDuration = Math.max(60, Math.min(180 * 60, minutes * 60));
         appState.session.elapsedSeconds = 0;
         updateUI();
@@ -183,35 +233,21 @@ function initTimerPage() {
     function start() {
         if (appState.session.isRunning) return;
         appState.session.isRunning = true;
-        if (!appState.session.startTime) appState.session.startTime = new Date().toISOString();
-        if (pauseStart) {
-            logSession({
-                session_type: 'pause',
-                user_id: uid,
-                task_name: appState.session.taskName,
-                start_time: pauseStart,
-                end_time: new Date().toISOString(),
-                duration_seconds: Math.floor((new Date() - new Date(pauseStart)) / 1000)
-            });
-            pauseStart = null;
+        if (!appState.session.startTime) {
+            appState.session.startTime = new Date().toISOString();
         }
-        const base = Date.now() - appState.session.elapsedSeconds * 1000;
+
+        const baseTime = Date.now() - appState.session.elapsedSeconds * 1000;
         appState.timerInterval = setInterval(() => {
-            appState.session.elapsedSeconds = Math.floor((Date.now() - base) / 1000);
-            if (appState.session.elapsedSeconds >= appState.session.totalDuration) {
-                stop(true);
-            } else {
-                updateUI();
+            appState.session.elapsedSeconds = Math.floor((Date.now() - baseTime) / 1000);
+            if (!appState.session.isOvertime && appState.session.elapsedSeconds >= appState.session.totalDuration) {
+                appState.session.isOvertime = true;
+                // Optional: play a sound
             }
+            updateUI();
         }, 250);
-        setTimerState({
-            isWorkSessionActive: true,
-            userId: uid,
-            taskName: appState.session.taskName,
-            workSessionStartTime: appState.session.startTime,
-            totalElapsedSecondsAtStart: 0,
-            totalDurationSeconds: appState.session.totalDuration
-        });
+        
+        saveState();
         updateUI();
     }
 
@@ -219,38 +255,71 @@ function initTimerPage() {
         if (!appState.session.isRunning) return;
         appState.session.isRunning = false;
         clearInterval(appState.timerInterval);
-        pauseStart = new Date().toISOString();
+        saveState();
         updateUI();
     }
 
-    function stop(isCompleted = false) {
+    function stop() {
+        if (appState.isStopping) return;
+        appState.isStopping = true;
+
         clearInterval(appState.timerInterval);
-        const st = getTimerState();
-        if (st && st.isWorkSessionActive) {
-            const final = appState.session.elapsedSeconds;
+        appState.session.isRunning = false;
+        
+        if (appState.session.startTime && appState.session.elapsedSeconds > 0) {
             logSession({
-                session_type: 'work',
                 user_id: uid,
                 task_name: appState.session.taskName,
-                start_time: st.workSessionStartTime,
+                start_time: appState.session.startTime,
                 end_time: new Date().toISOString(),
-                duration_seconds: final
+                duration_seconds: Math.floor(appState.session.elapsedSeconds)
             });
         }
         clearTimerState();
         window.location.href = `/dashboard/${uid}`;
     }
 
+    function restoreState() {
+        const saved = getTimerState();
+        if (saved && saved.userId === uid && saved.taskName === appState.session.taskName) {
+            appState.session.startTime = saved.workSessionStartTime;
+            appState.session.totalDuration = saved.totalDurationSeconds;
+            
+            let elapsedSinceSave = 0;
+            if (saved.isRunning && saved.lastSaveTimestamp) {
+                elapsedSinceSave = (Date.now() - saved.lastSaveTimestamp) / 1000;
+            }
+            appState.session.elapsedSeconds = saved.elapsedSecondsOnSave + elapsedSinceSave;
+            appState.session.isOvertime = appState.session.elapsedSeconds >= appState.session.totalDuration;
+            
+            if (saved.isRunning) {
+                start();
+            } else {
+                updateUI();
+            }
+        } else {
+            updateUI();
+        }
+    }
+
     if (startPauseBtn) startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pause() : start());
-    if (stopBtn) stopBtn.addEventListener('click', () => stop(false));
+    if (stopBtn) stopBtn.addEventListener('click', stop);
     if (decreaseBtn) decreaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 - 5));
     if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
     if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    window.addEventListener('unload', () => { if (appState.session.isRunning) stop(false); });
-    
-    updateUI();
+    window.addEventListener('beforeunload', () => {
+        if (appState.session.isRunning) saveState();
+    });
+     window.addEventListener('unload', () => {
+        if (appState.session.startTime && !appState.isStopping) {
+             stop();
+        }
+    });
+
+    restoreState();
 }
+
 
 // =======================================================
 //        ДИНАМИКА И ЧАРТЫ
