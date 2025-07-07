@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Отчёты по Активности{% endblock %}
-
 {% block content %}
 <div class="dynamics-page" data-user-id="{{ user_id }}">
     
@@ -10,13 +9,17 @@
     </header>
 
     <section class="stats-section">
+        <h2>Активность по задачам</h2>
+        <div id="calendars-container" class="calendars-grid">
+            <p>Загрузка данных...</p>
+        </div>
+    </section>
+
+    <section class="stats-section">
         <h2>Активность по дням (часы)</h2>
-        <!-- Новый фильтр по неделям -->
         <div class="chart-filters">
             <label for="weeks-filter">Показать за последние:</label>
-            <select id="weeks-filter">
-                <!-- Опции будут добавлены через JS -->
-            </select>
+            <select id="weeks-filter"></select>
         </div>
         <div class="chart-container">
             <canvas id="dailyActivityChart"></canvas>
@@ -25,7 +28,6 @@
 
     <section class="stats-section">
         <h2>Продуктивность по часам дня</h2>
-        <!-- Новый фильтр по конкретному дню -->
         <div class="chart-filters">
             <label for="day-picker">Выберите день:</label>
             <input type="date" id="day-picker">
