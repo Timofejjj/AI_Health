@@ -6,7 +6,7 @@
     <header class="dashboard-header">
         <h1>{{ greeting }}, {{ user_id }}</h1>
         <form action="{{ url_for('login') }}" method="get">
-             <button type="submit" class="logout-button">Выйти</button>
+            <button type="submit" class="logout-button">Выйти</button>
         </form>
     </header>
 
@@ -15,6 +15,7 @@
         <h2>Результат анализа</h2>
         <div>{{ analysis_result | markdown | safe }}</div>
     </section>
+    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 32px 0;">
     {% endif %}
 
     <section class="thought-form">
@@ -22,33 +23,44 @@
             <input type="hidden" name="action" value="save_thought">
             <div class="input-group">
                 <label for="thought">Что у вас на уме?</label>
-                <textarea id="thought" name="thought" placeholder="Напишите свою мысль здесь..." required></textarea>
+                <textarea id="thought" name="thought" placeholder="Напишите свою мысль здесь..." required rows="4"></textarea>
             </div>
-            <button type="submit" class="button">Отправить</button>
+            <button type="submit" class="button button-primary">Отправить</button>
         </form>
     </section>
 
     <nav class="desktop-nav">
         <a href="{{ url_for('thoughts_list', user_id=user_id) }}" class="button button-secondary">Все мысли</a>
         <a href="{{ url_for('analyses_list', user_id=user_id) }}" class="button button-secondary">История анализов</a>
-        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+        <form method="post" action="{{ url_for('dashboard', user_id=user_id) }}" style="display: inline;">
             <input type="hidden" name="action" value="analyze">
             <button type="submit" class="button button-secondary">Анализ последних мыслей</button>
         </form>
     </nav>
 </main>
 
-<!-- Модальное окно для запуска таймера -->
+<!-- БАННЕР АКТИВНОГО ТАЙМЕРА -->
+<div id="persistent-timer-bar" class="persistent-timer-bar" style="display: none;">
+    <div class="timer-status-indicator">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="persistent-status-text">Таймер запущен</span>
+    </div>
+    <a href="#" id="return-to-timer-btn" class="button">Вернуться к таймеру</a>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО ДЛЯ ЗАПУСКА ТАЙМЕРА -->
 <div class="modal-overlay" id="task-modal" style="display: none;">
     <div class="modal-content">
         <h2>Над чем вы работаете?</h2>
-        <form id="task-form">
+        <form id="task-form" method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+            <input type="hidden" name="action" value="start_session">
             <div class="input-group">
-                <input type="text" id="task-name-input" placeholder="Например, 'Разработка новой фичи'" required>
+                <input type="text" id="task-name-input" name="task_name" placeholder="Например, 'Разработка новой фичи'" required>
             </div>
-            <button type="submit" class="button">Начать сессию</button>
+            <button type="submit" class="button button-primary">Начать сессию</button>
             <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
         </form>
     </div>
 </div>
+
 {% endblock %}
