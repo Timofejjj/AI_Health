@@ -10,14 +10,6 @@
         </form>
     </header>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="notification {{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
     {% if analysis_result %}
     <section class="analysis-result">
         <h2>Результат анализа</h2>
