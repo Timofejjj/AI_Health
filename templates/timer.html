@@ -6,38 +6,60 @@
     
     <header class="timer-header">
         <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">←</a>
-        <h1>{{ task_name }}</h1>
+        <h1 id="task-title-header">{{ task_name }}</h1>
         <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary button-small">Отчёты</a>
     </header>
 
     <div class="timer-container">
-        <!-- Новый виджет таймера -->
         <div class="timer-widget">
             <div class="display-area">
-                <div class="session-label">СЕССИЯ</div>
+                <div class="session-label" id="session-label">СЕССИЯ</div>
                 <div class="time-display">25:00</div>
             </div>
-            <div class="main-controls">
-                <button class="control-btn-main">Старт</button>
-                <button class="control-btn-secondary">Завершить</button>
-            </div>
-            <div class="adjustment-controls">
-                <div class="control-group">
-                    <span class="control-label">Длина сессии</span>
-                    <div class="buttons-wrapper">
-                        <button id="decrease-time-btn" class="adjust-btn">– 5</button>
-                        <button id="increase-time-btn" class="adjust-btn">+ 5</button>
+
+            <!-- БЛОК ДЛЯ РАБОЧЕЙ СЕССИИ -->
+            <div id="work-session-controls">
+                <div class="main-controls">
+                    <button class="control-btn-main">Старт</button>
+                    <button class="control-btn-secondary">Завершить</button>
+                </div>
+                <div class="adjustment-controls">
+                    <div class="control-group">
+                        <span class="control-label">Длина сессии</span>
+                        <div class="buttons-wrapper">
+                            <button id="decrease-time-btn" class="adjust-btn">– 5</button>
+                            <button id="increase-time-btn" class="adjust-btn">+ 5</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Пресеты</span>
+                         <div class="buttons-wrapper">
+                            <button class="time-preset-btn" data-minutes="25">25</button>
+                            <button class="time-preset-btn" data-minutes="50">50</button>
+                            <button class="time-preset-btn" data-minutes="60">60</button>
+                        </div>
                     </div>
                 </div>
-                <div class="control-group">
-                    <span class="control-label">Пресеты</span>
-                     <div class="buttons-wrapper">
-                        <button class="time-preset-btn" data-minutes="25">25</button>
-                        <button class="time-preset-btn" data-minutes="50">50</button>
-                        <button class="time-preset-btn" data-minutes="60">60</button>
+            </div>
+
+            <!-- БЛОК ДЛЯ ПЕРЕРЫВА (изначально скрыт) -->
+            <div id="break-session-controls" class="hidden">
+                 <div class="main-controls">
+                    <button id="start-break-btn" class="control-btn-main green">Начать перерыв</button>
+                    <button id="skip-break-btn" class="control-btn-secondary">Пропустить</button>
+                </div>
+                 <div class="adjustment-controls">
+                    <div class="control-group">
+                        <span class="control-label">Длина перерыва</span>
+                         <div class="buttons-wrapper" id="break-presets">
+                            <button class="break-preset-btn" data-minutes="5">5 мин</button>
+                            <button class="break-preset-btn selected" data-minutes="10">10 мин</button>
+                            <button class="break-preset-btn" data-minutes="15">15 мин</button>
+                        </div>
                     </div>
                 </div>
             </div>
+
         </div>
     </div>
 </div>
