@@ -1,27 +1,23 @@
 {% extends "base.html" %}
-{% block title %}История анализов{% endblock %}
+
+{% block title %}Аналитика - Мой Ассистент{% endblock %}
 
 {% block content %}
-<main class="thoughts-container">
-    <header class="thoughts-header">
-        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← Назад</a>
-        <h1>История анализов</h1>
-    </header>
-    
-    <section class="thought-list">
-        {% if analyses %}
-            {% for analysis in analyses %}
-            <div class="list-item">
-                <div class="meta">
-                    <p><strong>Отчет от:</strong> {{ analysis.analysis_timestamp | replace("T", " ") | slice(0, 19) }}</p>
-                    <p><strong>Включены мысли до:</strong> {{ analysis.thoughts_analyzed_until | replace("T", " ") | slice(0, 19) }}</p>
-                </div>
-                <div class="content">{{ analysis.report_content }}</div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <p>Здесь пока пусто. Создайте ваш первый анализ на главном экране.</p>
-        {% endif %}
-    </section>
-</main>
+<div class="page-header">
+     <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← Назад</a>
+    <h1>Архив аналитики</h1>
+    <div></div>
+</div>
+
+{% if analyses %}
+    {% for analysis in analyses %}
+    <div class="analysis-result">
+        <h2 style="font-size: 16px; border: none; padding: 0; margin-bottom: 12px;">Анализ от {{ analysis.analysis_timestamp | format_datetime }}</h2>
+        {{ analysis.report|markdown }}
+    </div>
+    {% endfor %}
+{% else %}
+    <p>Здесь пока пусто. Запустите свой первый анализ на главном экране.</p>
+{% endif %}
+
 {% endblock %}
