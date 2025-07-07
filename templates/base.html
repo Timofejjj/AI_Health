@@ -35,11 +35,27 @@
             <a href="#" id="fab-menu-session-btn" class="fab-menu-item">Начать сессию</a>
             <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
         </div>
+
+        <!-- Модальное окно для запуска сессии -->
+        <div class="modal-overlay" id="task-modal" style="display: none;">
+            <div class="modal-content">
+                <h3 class="modal-header">Над чем вы работаете?</h3>
+                <form id="task-form" method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
+                    <input type="hidden" name="action" value="start_session">
+                    <div class="form-group">
+                        <input type="text" id="task-name-input" name="task_name" class="form-input" placeholder="Например, 'Разработка новой фичи'" required>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
+                        <button type="submit" class="button button-primary">Начать сессию</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-
 </body>
 </html>
