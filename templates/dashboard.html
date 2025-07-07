@@ -10,6 +10,14 @@
         </form>
     </header>
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="notification {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     {% if analysis_result %}
     <section class="analysis-result">
         <h2>Результат анализа</h2>
@@ -23,7 +31,7 @@
             <input type="hidden" name="action" value="save_thought">
             <div class="input-group">
                 <label for="thought">Что у вас на уме?</label>
-                <textarea id="thought" name="thought" placeholder="Напишите свою мысль здесь..." required rows="4"></textarea>
+                <textarea id="thought" name="thought" class="form-input" placeholder="Напишите свою мысль здесь..." required rows="4"></textarea>
             </div>
             <button type="submit" class="button button-primary">Отправить</button>
         </form>
@@ -62,5 +70,4 @@
         </form>
     </div>
 </div>
-
 {% endblock %}
