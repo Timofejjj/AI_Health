@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}История анализов{% endblock %}
+
+{% block content %}
+<main class="thoughts-container">
+    <header class="thoughts-header">
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← Назад</a>
+        <h1>История анализов</h1>
+    </header>
+    
+    <section class="thought-list">
+        {% if analyses %}
+            {% for analysis in analyses %}
+            <div class="list-item">
+                <div class="meta">
+                    <p><strong>Отчет от:</strong> {{ analysis.analysis_timestamp | replace("T", " ") | slice(0, 19) }}</p>
+                    <p><strong>Включены мысли до:</strong> {{ analysis.thoughts_analyzed_until | replace("T", " ") | slice(0, 19) }}</p>
+                </div>
+                <div class="content">{{ analysis.report_content }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>Здесь пока пусто. Создайте ваш первый анализ на главном экране.</p>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

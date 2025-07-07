@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Мой Ассистент{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-user-id="{{ user_id if user_id else '' }}">
+    
+    {% block content %}{% endblock %}
+
+    {% if user_id %}
+        <!-- Панель активного таймера -->
+        <div id="persistent-timer-bar" class="persistent-timer-bar" style="display: none;">
+            <div class="timer-info">
+                <div class="timer-status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="persistent-status-text"></span>
+                </div>
+                <span class="task-name"></span>
+                <span class="time-display"></span>
+            </div>
+            <a href="#" id="return-to-timer-btn" class="button button-small button-primary">К таймеру</a>
+        </div>
+
+        <!-- Плавающая кнопка (FAB) -->
+        <button id="timer-fab" class="timer-fab" title="Действия">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </button>
+
+        <!-- Всплывающее меню для FAB -->
+        <div id="timer-fab-menu" class="timer-fab-menu">
+            <a href="#" id="fab-menu-session-btn" class="fab-menu-item">Начать/продолжить сессию</a>
+            <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
+        </div>
+
+        <!-- Модальное окно для запуска сессии -->
+        <div class="modal-overlay" id="task-modal" style="display: none;">
+            <div class="modal-content">
+                <h3 class="modal-header">Над чем вы работаете?</h3>
+                <form id="task-form" method="post" action="#">
+                    <div class="form-group">
+                        <input type="text" id="task-name-input" name="task_name" class="form-input" placeholder="Например, 'Разработка новой фичи'" required>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
+                        <button type="submit" class="button button-primary">Начать сессию</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>

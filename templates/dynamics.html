@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Отчёты по Активности{% endblock %}
+{% block content %}
+<div class="dynamics-page main-content" data-user-id="{{ user_id }}">
+    
+    <header class="dashboard-header">
+        <h1>Отчёты по Активности</h1>
+        <a href="{{ url_for('dashboard', user_id=user_id) }}" class="link-button">← На главную</a>
+    </header>
+
+    <section class="stats-section">
+        <h2>Активность по задачам</h2>
+        <div id="calendars-container" class="calendars-grid">
+            <p>Загрузка данных...</p>
+        </div>
+    </section>
+
+    <section class="stats-section">
+        <h2>Активность по дням (часы)</h2>
+        <div class="chart-filters">
+            <label for="weeks-filter">Показать за последние:</label>
+            <select id="weeks-filter"></select>
+        </div>
+        <div class="chart-container">
+            <canvas id="dailyActivityChart"></canvas>
+        </div>
+    </section>
+
+    <section class="stats-section">
+        <h2>Продуктивность по часам дня</h2>
+        <div class="chart-filters">
+            <label for="day-picker">Выберите день:</label>
+            <input type="date" id="day-picker">
+        </div>
+        <div class="chart-container">
+            <canvas id="hourlyActivityChart"></canvas>
+        </div>
+    </section>
+    
+</div>
+{% endblock %}
