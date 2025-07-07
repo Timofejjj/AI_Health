@@ -80,7 +80,7 @@ def get_new_thoughts(thoughts, last_analysis_time):
     if last_analysis_time is None: return thoughts
     new_thoughts = []
     for t in thoughts:
-        if t.get('timestamp'): # Проверяем, что ключ существует и не пустой
+        if t.get('timestamp'):
             try:
                 if parser.parse(t['timestamp']) > last_analysis_time:
                     new_thoughts.append(t)
@@ -88,24 +88,14 @@ def get_new_thoughts(thoughts, last_analysis_time):
                 print(f"Предупреждение: не удалось разобрать дату для мысли: {t}")
     return new_thoughts
 
-def normalize_task_name(task_name):
-    name = str(task_name or '').strip().lower()
-    if "ml" in name or "машин" in name:
-        return "машинное обучение"
-    if "проект" in name:
-        return "работа над проектом"
-    return name
-
 def generate_analysis_report(thoughts_list, timer_logs_list):
     if not gemini_model: return "Модель анализа недоступна, так как ключ API не настроен."
     if not thoughts_list and not timer_logs_list: return "Нет новых данных для анализа."
 
-    # Форматирование мыслей
     full_text = "Нет новых записей мыслей за этот период."
     if thoughts_list:
-        full_text = "\n\n---\n\n".join([f"[{parser.isoparse(t['timestamp']).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts_list])
+        full_text = "\n".join([f"[{parser.isoparse(t['timestamp']).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts_list])
 
-    # Форматирование логов таймера с разделением на работу и паузы
     timer_summary = "Нет данных об активности за этот период."
     if timer_logs_list:
         df = pd.DataFrame(timer_logs_list)
@@ -113,54 +103,38 @@ def generate_analysis_report(thoughts_list, timer_logs_list):
         df['duration_seconds'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0)
         df['duration_minutes'] = (df['duration_seconds'] / 60).round(1)
         
-        work_sessions = df[df['session_type'] == 'work']
-        pause_sessions = df[df['session_type'] == 'pause']
-
-        summary_lines = ["### Рабочие сессии:"]
-        if not work_sessions.empty:
-            for _, row in work_sessions.iterrows():
-                summary_lines.append(f"- '{row.get('task_name', 'Без названия')}' ({row['duration_minutes']} мин) началась в {row['start_time'].strftime('%H:%M')}")
-        else:
-            summary_lines.append("- Нет данных.")
-
-        summary_lines.append("\n### Паузы:")
-        if not pause_sessions.empty:
-             for _, row in pause_sessions.iterrows():
-                summary_lines.append(f"- Пауза ({row['duration_minutes']} мин) началась в {row['start_time'].strftime('%H:%M')}")
-        else:
-            summary_lines.append("- Нет данных.")
-        
+        summary_lines = []
+        for _, row in df.iterrows():
+            session_info = f"- Тип: {row['session_type']}, Задача: '{row.get('task_name', 'Без названия')}', Продолжительность: {row['duration_minutes']} мин, Время: {row['start_time'].strftime('%H:%M')}"
+            summary_lines.append(session_info)
         timer_summary = "\n".join(summary_lines)
 
-    # Итоговый, правильный промпт
     prompt = f"""
 # ЗАДАЧА
-Провести комплексный анализ моих мыслей и рабочей активности, чтобы помочь мне выявить закономерности и получить рекомендации.
+Ты — мой личный когнитивный аналитик. Твоя задача — провести комплексный анализ моих мыслей и журнала активности, чтобы выявить закономерности и дать рекомендации.
 
 # ВХОДНЫЕ ДАННЫЕ
 
-## 1. Мои текстовые мысли
+## 1. Мои текстовые мысли:
 {full_text}
 
-## 2. Журнал моей активности (Работа и Паузы)
+## 2. Журнал моей активности (Работа и Паузы):
 {timer_summary}
 
 # АНАЛИЗ И СТРУКТУРА ОТВЕТА
-Действуй как мой личный когнитивный аналитик и стратегический коуч. Твой ответ должен быть структурирован в соответствии с форматом, указанным ниже.
 
-### 1. Краткое резюме и главная тема периода:
-*(В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные из мыслей и активности.)*
+### 1. Группировка задач и главная тема периода:
+*   **Сгруппируй задачи:** Внимательно изучи названия задач в журнале активности. Если видишь похожие по смыслу задачи (например, "Работа над ML", "ML-проект", "Обучение модели"), объедини их в одну логическую группу (например, "Проект по Машинному обучению"). Выведи сгруппированный список.
+*   **Главный инсайт:** В 2-3 предложениях опиши ключевую мысль или эмоциональное состояние этого периода, синтезируя данные из мыслей и сгруппированной активности.
 
 ### 2. Связь между работой и мыслями:
-*(Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания". Или: "После продуктивной сессии по 'Дизайну' твои мысли стали более оптимистичными".)*
+Проанализируй, как темы работы коррелируют с темами размышлений. Например: "Я вижу, что ты много беспокоишься о 'Проекте X', но сессий по этой задаче не было. Это может быть признаком избегания".
 
 ### 3. Анализ паттернов продуктивности:
-*(Оцени соотношение времени работы и пауз. Есть ли признаки выгорания (длинные, частые паузы), высокой концентрации (длинные рабочие сессии) или прокрастинации (короткая работа, затем длинная пауза)?)*
+Оцени соотношение времени работы и пауз. Есть ли признаки выгорания (длинные, частые паузы), высокой концентрации (длинные рабочие сессии) или прокрастинации (короткая работа, затем длинная пауза)?
 
-### 4. Рекомендации, предупреждения и прогноз:
-*   **Советы:** Дай 1-2 конкретных, действенных совета, основанных на связи мыслей, работы и пауз.
-*   **На что обратить внимание:** Укажи, на какие паттерны поведения мне стоит обратить внимание в ближайшие дни.
-*   **Прогноз (если ничего не менять):** Что вероятнее всего произойдет в ближайшие 1-2 недели, если текущие тенденции сохранятся?
+### 4. Рекомендации:
+Дай 1-2 конкретных, действенных совета, основанных на твоем комплексном анализе.
 """
     try:
         response = gemini_model.generate_content(prompt)
@@ -227,18 +201,6 @@ def dashboard(user_id):
 
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
-@app.route('/thoughts/<user_id>')
-def thoughts_list(user_id):
-    all_thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-    all_thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    return render_template('thoughts.html', user_id=user_id, thoughts=all_thoughts)
-
-@app.route('/analyses/<user_id>')
-def analyses_list(user_id):
-    all_analyses = get_data_from_sheet(worksheet_analyses, user_id)
-    all_analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    return render_template('analyses.html', user_id=user_id, analyses=all_analyses)
-
 @app.route('/timer/<user_id>')
 def timer(user_id):
     return render_template('timer.html', user_id=user_id, task_name=request.args.get('task', 'Без названия'))
@@ -271,8 +233,6 @@ def log_timer_session():
             duration
         ])
         return jsonify({'status': 'success'})
-    except (ValueError, TypeError) as e:
-        return jsonify({'status': 'error', 'message': f'Invalid data format: {e}'}), 400
     except Exception as e:
         print(f"Ошибка сохранения сессии в Google Sheets: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
