@@ -4,16 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Мой Ассистент{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body data-user-id="{{ user_id if user_id else '' }}">
     
-    <div class="main-content">
-        {% block content %}{% endblock %}
-    </div>
+    {% block content %}{% endblock %}
 
     {% if user_id %}
         <!-- Панель активного таймера -->
@@ -21,12 +16,12 @@
             <div class="timer-info">
                 <div class="timer-status-indicator">
                     <div class="status-dot"></div>
-                    <span id="persistent-status-text">Таймер запущен</span>
+                    <span id="persistent-status-text"></span>
                 </div>
                 <span class="task-name"></span>
                 <span class="time-display"></span>
             </div>
-            <a href="#" id="return-to-timer-btn" class="button button-small">К таймеру</a>
+            <a href="#" id="return-to-timer-btn" class="button button-small button-primary">К таймеру</a>
         </div>
 
         <!-- Плавающая кнопка (FAB) -->
@@ -36,7 +31,7 @@
 
         <!-- Всплывающее меню для FAB -->
         <div id="timer-fab-menu" class="timer-fab-menu">
-            <a href="#" id="fab-menu-session-btn" class="fab-menu-item">Начать сессию</a>
+            <a href="#" id="fab-menu-session-btn" class="fab-menu-item">Начать/продолжить сессию</a>
             <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
         </div>
 
@@ -44,8 +39,7 @@
         <div class="modal-overlay" id="task-modal" style="display: none;">
             <div class="modal-content">
                 <h3 class="modal-header">Над чем вы работаете?</h3>
-                <form id="task-form" method="post" action="{{ url_for('dashboard', user_id=user_id) }}">
-                    <input type="hidden" name="action" value="start_session">
+                <form id="task-form" method="post" action="#">
                     <div class="form-group">
                         <input type="text" id="task-name-input" name="task_name" class="form-input" placeholder="Например, 'Разработка новой фичи'" required>
                     </div>
@@ -60,6 +54,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
