@@ -1,112 +1,127 @@
 // =======================================================
 //        ГЛОБАЛЬНОЕ СОСТОЯНИЕ И UI
 // =======================================================
-const TIMER_STATE_KEY = 'persistentTimerState';
-let globalUserId = null; // Будет установлен при загрузке страницы
+const TIMER_STATE_KEY = 'timerState';
+const appState = {
+    userId: null,
+    session: {
+        startTime: null,
+        isRunning: false,
+        taskName: null,
+        elapsedSeconds: 0,
+        totalDuration: 25 * 60 // По умолчанию 25 минут
+    },
+    timerInterval: null
+};
 
-// Функции для работы с localStorage
-function getTimerState() {
-    try {
-        const state = localStorage.getItem(TIMER_STATE_KEY);
-        return state ? JSON.parse(state) : null;
-    } catch (e) {
-        console.error("Could not parse timer state from localStorage", e);
-        return null;
-    }
-}
+function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
+function setTimerState(state) { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
+function clearTimerState() { localStorage.removeItem(TIMER_STATE_KEY); }
 
-function setTimerState(state) {
-    localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
-}
-
-function clearTimerState() {
-    localStorage.removeItem(TIMER_STATE_KEY);
-}
-
-// Функции для модальных окон
 function showModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
-        modal.classList.add('visible');
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('visible'), 10);
     }
 }
 
 function hideModals() {
     document.querySelectorAll('.modal-overlay.visible').forEach(m => {
         m.classList.remove('visible');
+        setTimeout(() => m.style.display = 'none', 200);
     });
 }
 
-// Обновление плавающей панели таймера
 function updatePersistentBar() {
     const bar = document.getElementById('persistent-timer-bar');
-    const state = getTimerState();
+    const st = getTimerState();
     if (!bar) return;
 
-    // Очищаем предыдущий интервал, чтобы избежать дублирования
+    // Clear any existing intervals to prevent duplicates
     if (bar.intervalId) {
         clearInterval(bar.intervalId);
         bar.intervalId = null;
     }
 
-    // Показываем панель, если есть активный таймер и мы НЕ на странице таймера
-    if (state && state.isActive && !document.querySelector('.timer-page')) {
+    if (st && st.isWorkSessionActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
-        bar.querySelector('.task-name').textContent = state.taskName;
-        const link = bar.querySelector('a');
-        link.href = `/timer/${state.userId}?task=${encodeURIComponent(state.taskName)}`;
-
-        const timeDisplay = bar.querySelector('.time-display');
-
+        bar.querySelector('.task-name').textContent = st.taskName;
+        bar.querySelector('#return-to-timer-btn').href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
+        
         const updateBarTime = () => {
-            const elapsedSeconds = Math.floor((Date.now() - state.startTime) / 1000);
-            const remaining = state.totalDuration - elapsedSeconds;
+            const elapsed = Math.floor((Date.now() - new Date(st.workSessionStartTime)) / 1000);
+            const remaining = st.totalDurationSeconds - elapsed;
             const isOvertime = remaining < 0;
-
             const displaySeconds = Math.abs(remaining);
-            const minutes = String(Math.floor(displaySeconds / 60)).padStart(2, '0');
-            const seconds = String(displaySeconds % 60).padStart(2, '0');
-
-            timeDisplay.textContent = `${isOvertime ? '+' : ''}${minutes}:${seconds}`;
+            const minutes = Math.floor(displaySeconds / 60);
+            const seconds = displaySeconds % 60;
+            bar.querySelector('.time-display').textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         };
-
-        updateBarTime();
+        
+        updateBarTime(); // Initial update
         bar.intervalId = setInterval(updateBarTime, 1000);
+
     } else {
         bar.classList.remove('visible');
     }
 }
 
+
 // =======================================================
 //        API ЛОГИРОВАНИЕ
 // =======================================================
 function logSession(data) {
-    // Используем sendBeacon для надежной отправки данных при закрытии страницы
     if (navigator.sendBeacon) {
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
         navigator.sendBeacon('/api/log_session', blob);
     } else {
-        // Fallback для старых браузеров
         fetch('/api/log_session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-            keepalive: true // Попытка сохранить запрос живым при уходе со страницы
-        }).catch(error => console.error('Failed to log session with fetch:', error));
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                console.error('Failed to log session:', data.message);
+            }
+        })
+        .catch(error => console.error('Failed to log session:', error));
     }
 }
 
 // =======================================================
-//        ИНФРАСТРУКТУРА FAB И МОДАЛОВ
+//        ИНФРАСТРУКТУРА МОДАЛОВ
 // =======================================================
-function initFabAndModals() {
-    const fab = document.querySelector('.fab');
+function initStartSessionModal() {
+    const showBtn = document.getElementById('show-session-modal-btn');
+    const modal = document.getElementById('start-session-modal');
+    const confirm = document.getElementById('confirm-start-btn');
+    const cancel = document.getElementById('cancel-start-btn');
+    const input = document.getElementById('task-name-input');
+    const uid = document.body.dataset.userId;
+    if (showBtn) showBtn.addEventListener('click', () => showModal('start-session-modal'));
+    if (cancel) cancel.addEventListener('click', hideModals);
+    if (confirm) confirm.addEventListener('click', () => {
+        const name = input.value.trim();
+        if (name) {
+            hideModals();
+            window.location.href = `/timer/${uid}?task=${encodeURIComponent(name)}`;
+        } else {
+            alert('Пожалуйста, введите название задачи.');
+        }
+    });
+}
+
+// =======================================================
+//        ИНИЦИАЛИЗАЦИЯ FAB
+// =======================================================
+function initFabMenu() {
+    const fab = document.getElementById('timer-fab') || document.querySelector('.fab');
     const menu = document.getElementById('timer-fab-menu');
-    const startSessionBtn = document.getElementById('fab-menu-session-btn');
-    const taskModal = document.getElementById('task-modal');
-    const taskForm = document.getElementById('task-form');
-    const taskInput = document.getElementById('task-name-input');
-    
+    const btn = document.getElementById('fab-menu-session-btn');
+    const modal = document.getElementById('task-modal'); // Corrected modal selector
     if (fab && menu) {
         fab.addEventListener('click', e => {
             e.stopPropagation();
@@ -114,62 +129,38 @@ function initFabAndModals() {
         });
         document.addEventListener('click', () => menu.classList.remove('visible'));
         menu.addEventListener('click', e => e.stopPropagation());
-    }
-
-    if (startSessionBtn) {
-        startSessionBtn.addEventListener('click', e => {
+        if (btn) btn.addEventListener('click', e => {
             e.preventDefault();
             menu.classList.remove('visible');
-            const state = getTimerState();
-            // Если таймер уже запущен, переходим к нему
-            if (state && state.isActive) {
-                window.location.href = `/timer/${state.userId}?task=${encodeURIComponent(state.taskName)}`;
-            } else if (taskModal) {
-                // Иначе показываем модальное окно для новой задачи
+            const st = getTimerState();
+            if (st && st.isWorkSessionActive) {
+                window.location.href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
+            } else if (modal) {
                 showModal('task-modal');
             }
         });
     }
-
-    if (taskForm && taskInput) {
-        taskForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const taskName = taskInput.value.trim();
-            if (taskName && globalUserId) {
-                hideModals();
-                window.location.href = `/timer/${globalUserId}?task=${encodeURIComponent(taskName)}`;
-            } else if (!taskName) {
-                alert('Пожалуйста, введите название задачи.');
-            }
-        });
-    }
-
-    // Закрытие модальных окон
-    document.querySelectorAll('.modal-overlay, .modal-cancel-btn').forEach(el => {
-        el.addEventListener('click', (e) => {
-            if (e.target === el) hideModals();
-        });
-    });
 }
 
+
+function initModalClose() {
+    const close = document.getElementById('close-modal-btn');
+    if (close) close.addEventListener('click', hideModals);
+}
 
 // =======================================================
 //        ТАЙМЕРНАЯ ЛОГИКА
 // =======================================================
 function initTimerPage() {
-    // --- Состояние таймера для текущей страницы ---
-    const pageState = {
-        userId: document.body.dataset.userId,
-        taskName: new URLSearchParams(location.search).get('task') || 'Без названия',
-        totalDuration: 25 * 60, // Длительность в секундах, по умолчанию 25 мин
-        elapsedSeconds: 0,
-        startTime: null, // Время старта сессии (timestamp)
-        isRunning: false,
-        timerInterval: null
-    };
-
-    // --- DOM элементы ---
+    const body = document.querySelector('body');
+    const uid = body.dataset.userId;
+    appState.userId = uid;
+    const params = new URLSearchParams(location.search);
+    appState.session.taskName = params.get('task') || 'Без названия';
+    
     const taskNameEl = document.querySelector('.timer-header h1');
+    if (taskNameEl) taskNameEl.textContent = appState.session.taskName;
+    
     const timeDisplay = document.querySelector('.time-display');
     const startPauseBtn = document.querySelector('.control-btn-main');
     const stopBtn = document.querySelector('.control-btn-secondary');
@@ -178,125 +169,109 @@ function initTimerPage() {
     const presets = document.querySelectorAll('.time-preset-btn');
     const progressBar = document.querySelector('.timer-progress .progress-bar');
     const circumference = progressBar ? 2 * Math.PI * progressBar.r.baseVal.value : 0;
-    
-    if (taskNameEl) taskNameEl.textContent = pageState.taskName;
+
+    let pauseStart = null;
 
     function updateUI() {
-        const remaining = pageState.totalDuration - pageState.elapsedSeconds;
+        const remaining = appState.session.totalDuration - appState.session.elapsedSeconds;
         const isOvertime = remaining < 0;
 
-        const displaySeconds = Math.abs(remaining);
-        const minutes = String(Math.floor(displaySeconds / 60)).padStart(2, '0');
-        const seconds = String(displaySeconds % 60).padStart(2, '0');
-        
-        timeDisplay.textContent = `${isOvertime ? '+' : ''}${minutes}:${seconds}`;
-        timeDisplay.classList.toggle('overtime', isOvertime);
+        const minutes = Math.floor(Math.abs(remaining) / 60);
+        const seconds = Math.abs(remaining) % 60;
+        timeDisplay.textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
         if (progressBar) {
-            const progress = isOvertime ? 1 : pageState.elapsedSeconds / pageState.totalDuration;
+            const progress = Math.min(1, appState.session.elapsedSeconds / appState.session.totalDuration);
             progressBar.style.strokeDashoffset = circumference * (1 - progress);
             progressBar.classList.toggle('overtime', isOvertime);
         }
+        timeDisplay.classList.toggle('overtime', isOvertime);
 
-        startPauseBtn.textContent = pageState.isRunning ? 'Пауза' : (pageState.elapsedSeconds > 0 ? 'Продолжить' : 'Старт');
-        startPauseBtn.classList.toggle('running', pageState.isRunning);
-        startPauseBtn.classList.toggle('paused', !pageState.isRunning);
-        
-        const isEditable = !pageState.isRunning && pageState.elapsedSeconds === 0;
-        [decreaseBtn, increaseBtn, ...presets].forEach(el => el.disabled = !isEditable);
+        startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds > 0 ? 'Продолжить' : 'Старт');
+        startPauseBtn.classList.toggle('paused', appState.session.isRunning);
+
+        const timerHasStarted = appState.session.elapsedSeconds > 0;
+        decreaseBtn.disabled = appState.session.isRunning || timerHasStarted;
+        increaseBtn.disabled = appState.session.isRunning || timerHasStarted;
+        presets.forEach(p => p.disabled = appState.session.isRunning || timerHasStarted);
+        updatePersistentBar();
     }
 
     function setDuration(minutes) {
-        if (pageState.isRunning || pageState.elapsedSeconds > 0) return;
-        pageState.totalDuration = Math.max(60, Math.min(180 * 60, minutes * 60));
+        if (appState.session.isRunning || appState.session.elapsedSeconds > 0) return;
+        appState.session.totalDuration = Math.max(60, Math.min(180 * 60, minutes * 60));
+        appState.session.elapsedSeconds = 0;
         updateUI();
     }
 
     function start() {
-        if (pageState.isRunning) return;
-        
-        pageState.isRunning = true;
-        const now = Date.now();
-        // Если это первый запуск, устанавливаем время старта
-        if (!pageState.startTime) {
-            pageState.startTime = now;
+        if (appState.session.isRunning) return;
+        appState.session.isRunning = true;
+        if (!appState.session.startTime) appState.session.startTime = new Date().toISOString();
+        if (pauseStart) {
+            // This is a pause-resume event, not a separate session. The main session log handles total time.
+            pauseStart = null;
         }
-
-        const baseTime = now - pageState.elapsedSeconds * 1000;
-
-        pageState.timerInterval = setInterval(() => {
-            pageState.elapsedSeconds = Math.floor((Date.now() - baseTime) / 1000);
+        const base = Date.now() - appState.session.elapsedSeconds * 1000;
+        appState.timerInterval = setInterval(() => {
+            appState.session.elapsedSeconds = Math.floor((Date.now() - base) / 1000);
             updateUI();
         }, 250);
         
-        // Сохраняем состояние для персистентности
         setTimerState({
-            isActive: true,
-            userId: pageState.userId,
-            taskName: pageState.taskName,
-            startTime: pageState.startTime, // Сохраняем начальное время
-            totalDuration: pageState.totalDuration,
+            isWorkSessionActive: true,
+            userId: uid,
+            taskName: appState.session.taskName,
+            workSessionStartTime: appState.session.startTime,
+            totalDurationSeconds: appState.session.totalDuration
         });
-
         updateUI();
     }
 
     function pause() {
-        if (!pageState.isRunning) return;
-        pageState.isRunning = false;
-        clearInterval(pageState.timerInterval);
-        // При паузе состояние в localStorage не меняем, чтобы плашка продолжала работать
+        if (!appState.session.isRunning) return;
+        appState.session.isRunning = false;
+        clearInterval(appState.timerInterval);
+        pauseStart = new Date().toISOString();
         updateUI();
     }
 
-    function stop() {
-        clearInterval(pageState.timerInterval);
-        
-        if (pageState.startTime) { // Логируем сессию, только если она была начата
+    function stop(isCompleted = false) {
+        clearInterval(appState.timerInterval);
+        const st = getTimerState();
+        if (st && st.isWorkSessionActive) {
+            const finalDuration = appState.session.elapsedSeconds;
             logSession({
-                user_id: pageState.userId,
-                task_name: pageState.taskName,
-                start_time: new Date(pageState.startTime).toISOString(),
+                user_id: uid,
+                task_name: appState.session.taskName,
+                start_time: st.workSessionStartTime,
                 end_time: new Date().toISOString(),
-                duration_seconds: pageState.elapsedSeconds
+                duration_seconds: finalDuration
             });
         }
-        
-        clearTimerState(); // Очищаем состояние
-        pageState.isRunning = false;
-        
-        window.location.href = `/dashboard/${pageState.userId}`;
+        clearTimerState();
+        appState.session.isRunning = false;
+        appState.session.elapsedSeconds = 0;
+        appState.session.startTime = null;
+        window.location.href = `/dashboard/${uid}`;
     }
 
-    // --- Инициализация и обработчики событий ---
-    startPauseBtn.addEventListener('click', () => pageState.isRunning ? pause() : start());
-    stopBtn.addEventListener('click', stop);
-    decreaseBtn.addEventListener('click', () => setDuration(pageState.totalDuration / 60 - 5));
-    increaseBtn.addEventListener('click', () => setDuration(pageState.totalDuration / 60 + 5));
-    presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
+    if (startPauseBtn) startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pause() : start());
+    if (stopBtn) stopBtn.addEventListener('click', () => stop(false));
+    if (decreaseBtn) decreaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 - 5));
+    if (increaseBtn) increaseBtn.addEventListener('click', () => setDuration(appState.session.totalDuration / 60 + 5));
+    if (presets) presets.forEach(btn => btn.addEventListener('click', () => setDuration(parseInt(btn.dataset.minutes))));
     
-    // Попытка сохранить сессию при уходе со страницы
+    // Log final session on page close/navigate away
     window.addEventListener('beforeunload', () => { 
-        if (pageState.isRunning) {
-            // При работающем таймере, мы не вызываем stop(), так как sendBeacon в stop()
-            // не успеет отработать надежно. Вместо этого, состояние уже сохранено в localStorage
-            // и пользователь сможет вернуться. Завершение сессии происходит только по кнопке "Стоп".
-            // Если нужна 100% гарантия сохранения, то нужно логировать сессии периодически,
-            // а не только в конце.
+        if (appState.session.isRunning) {
+            // Note: This tries to log, but might not always complete.
+            // The persistent state helps recover, but stopping manually is best.
+            stop(false);
         }
     });
     
-    // --- Восстановление состояния при загрузке страницы ---
-    const persistentState = getTimerState();
-    if (persistentState && persistentState.isActive && persistentState.taskName === pageState.taskName) {
-        console.log("Восстановление состояния таймера...");
-        pageState.startTime = persistentState.startTime;
-        pageState.totalDuration = persistentState.totalDuration;
-        pageState.elapsedSeconds = Math.floor((Date.now() - pageState.startTime) / 1000);
-        start(); // Запускаем таймер с восстановленным состоянием
-    } else {
-        updateUI(); // Иначе просто отрисовываем UI по умолчанию
-    }
+    updateUI();
 }
 
 // =======================================================
@@ -304,6 +279,14 @@ function initTimerPage() {
 // =======================================================
 function initDynamicsPage() {
     const uid = document.body.dataset.userId;
+    const backBtn = document.getElementById('back-to-timer-from-dynamics');
+    if (backBtn) {
+        const st = getTimerState();
+        if (st && st.isWorkSessionActive) {
+            backBtn.style.display = 'inline-block';
+            backBtn.href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
+        }
+    }
     const weeksFilter = document.getElementById('weeks-filter');
     const dayPicker = document.getElementById('day-picker');
     const ctxDaily = document.getElementById('dailyActivityChart')?.getContext('2d');
@@ -313,56 +296,39 @@ function initDynamicsPage() {
     async function fetchData() {
         try {
             const res = await fetch(`/api/dynamics_data/${uid}`);
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             dataAll = await res.json();
-            
+            if (dataAll.error) throw new Error(dataAll.error);
             renderCalendars(dataAll.calendars);
-            
             weeksFilter.innerHTML = '';
             for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
-            weeksFilter.value = Math.min(4, dataAll.total_weeks || 1);
-            
+            weeksFilter.value = Math.min(4, dataAll.total_weeks);
             dayPicker.value = new Date().toISOString().split('T')[0];
-            
-            renderDailyChart(weeksFilter.value);
-            renderHourlyChart(dayPicker.value);
-
+            renderDaily(weeksFilter.value);
+            renderHourly(dayPicker.value);
         } catch (e) {
             console.error('Failed to fetch dynamics data:', e);
-            document.getElementById('charts-container').innerHTML = '<p>Не удалось загрузить данные для аналитики.</p>';
         }
     }
 
     function renderCalendars(cals) {
         const cont = document.getElementById('calendars-container');
         cont.innerHTML = '';
-        if (!cals || Object.keys(cals).length === 0) {
-            cont.innerHTML = '<p>Нет данных по задачам для отображения календарей.</p>';
-            return;
-        }
+        if (!cals || !Object.keys(cals).length) { cont.innerHTML = '<p>Нет данных по задачам.</p>'; return; }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
         Object.entries(cals).forEach(([task, dates]) => {
-            if (!task) return; // Пропускаем пустые названия задач
             const div = document.createElement('div');
             div.className = 'calendar';
             let html = `<div class="calendar-header">${task}</div><div class="calendar-body">`;
             ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(d => html += `<div class="calendar-day header">${d}</div>`);
-            
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            const offset = monthStart.getDay() === 0 ? 6 : monthStart.getDay() - 1;
+            const date = new Date(today.getFullYear(), today.getMonth(), 1);
+            const offset = date.getDay() == 0 ? 6 : date.getDay() - 1;
             for (let i = 0; i < offset; i++) html += `<div class="calendar-day"></div>`;
-            
-            let currentDate = new Date(monthStart);
-            while (currentDate.getMonth() === today.getMonth()) {
-                const ds = currentDate.toISOString().split('T')[0];
-                let cls = 'calendar-day';
-                if (dates.includes(ds)) cls += ' active';
-                if (currentDate.getTime() === today.getTime()) cls += ' today';
-                
-                html += `<div class="${cls}">${currentDate.getDate()}</div>`;
-                currentDate.setDate(currentDate.getDate() + 1);
+            while (date.getMonth() === today.getMonth()) {
+                const ds = date.toISOString().split('T')[0];
+                let cls = 'calendar-day' + (dates.includes(ds) ? ' active' : '') + (date.getTime() === today.getTime() ? ' today' : '');
+                html += `<div class="${cls}">${date.getDate()}</div>`;
+                date.setDate(date.getDate() + 1);
             }
             html += '</div>';
             div.innerHTML = html;
@@ -370,8 +336,7 @@ function initDynamicsPage() {
         });
     }
 
-    function renderDailyChart(weeks) {
-        if (!ctxDaily || !dataAll.activity_by_day.labels.length) return;
+    function renderDaily(weeks) {
         const days = weeks * 7;
         const labels = dataAll.activity_by_day.labels.slice(-days);
         const vals = dataAll.activity_by_day.data.slice(-days);
@@ -380,35 +345,46 @@ function initDynamicsPage() {
             type: 'bar',
             data: {
                 labels,
-                datasets: [{ data: vals, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)', borderWidth: 0 }]
+                datasets: [{
+                    data: vals,
+                    label: 'Часы работы',
+                    backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                    borderColor: 'rgba(0, 122, 255, 1)',
+                    borderWidth: 1
+                }]
             },
-            options: { scales: { y: { beginAtZero: true, suggestedMax: 8 } }, plugins: { legend: { display: false } }, responsive: true, maintainAspectRatio: false }
+            options: {
+                scales: { y: { beginAtZero: true, max: 15 } },
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
-    function renderHourlyChart(day) {
-        if (!ctxHourly || !dataAll.activity_by_hour.length) return;
-        const hourlyData = Array(24).fill(0);
-        dataAll.activity_by_hour.forEach(s => {
-            const startDate = new Date(s.start_time);
-            if (startDate.toISOString().startsWith(day)) {
-                hourlyData[startDate.getUTCHours()] += s.duration_hours;
-            }
-        });
-
+    function renderHourly(day) {
+        const arr = Array(24).fill(0);
+        dataAll.activity_by_hour.filter(d => d.start_time.startsWith(day)).forEach(s => arr[s.hour] += s.duration_hours);
         if (hourlyChart) hourlyChart.destroy();
         hourlyChart = new Chart(ctxHourly, {
             type: 'bar',
             data: {
                 labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-                datasets: [{ data: hourlyData, label: `Часы за ${day}`, backgroundColor: 'rgba(52, 199, 89, 0.6)', borderWidth: 0 }]
+                datasets: [{
+                    data: arr,
+                    label: `Часы за ${day}`,
+                    backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                    borderColor: 'rgba(0, 122, 255, 1)',
+                    borderWidth: 1
+                }]
             },
-            options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } }, responsive: true, maintainAspectRatio: false }
+            options: {
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
-    weeksFilter.addEventListener('change', () => renderDailyChart(weeksFilter.value));
-    dayPicker.addEventListener('change', () => renderHourlyChart(dayPicker.value));
+    if (weeksFilter) weeksFilter.addEventListener('change', () => renderDaily(weeksFilter.value));
+    if (dayPicker) dayPicker.addEventListener('change', () => renderHourly(dayPicker.value));
 
     fetchData();
 }
@@ -417,13 +393,31 @@ function initDynamicsPage() {
 //        ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ
 // =======================================================
 document.addEventListener('DOMContentLoaded', () => {
-    globalUserId = document.body.dataset.userId;
+    appState.userId = document.body.dataset.userId;
     
-    // Глобальная инициализация для всех страниц
-    initFabAndModals();
-    updatePersistentBar(); // Проверяем и показываем плашку при загрузке
+    // --- Глобальная инициализация ---
+    initFabMenu();
+    initModalClose();
+    updatePersistentBar();
 
-    // Инициализация для конкретных страниц
+    // --- Логика модального окна для старта сессии ---
+    const taskForm = document.getElementById('task-form');
+    const taskInput = document.getElementById('task-name-input');
+    if (taskForm && taskInput) {
+        taskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const taskName = taskInput.value.trim();
+            if (taskName && appState.userId) {
+                hideModals();
+                window.location.href = `/timer/${appState.userId}?task=${encodeURIComponent(taskName)}`;
+            } else if (!taskName) {
+                alert('Пожалуйста, введите название задачи.');
+            }
+        });
+    }
+    
+
+    // --- Инициализация для конкретных страниц ---
     if (document.querySelector('.timer-page')) initTimerPage();
     if (document.querySelector('.dynamics-page')) initDynamicsPage();
 });
