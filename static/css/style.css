@@ -389,16 +389,20 @@ textarea:focus {
 /* --- PERSISTENT TIMER BAR --- */
 .persistent-timer-bar {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 48px);
+  max-width: 400px;
+  background-color: #1d1d1f;
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
   display: none;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  background-color: #1d1d1f;
-  color: #fff;
-  z-index: 2000;
+  z-index: 900;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
 
 .persistent-timer-bar.visible {
@@ -409,6 +413,20 @@ textarea:focus {
   display: flex;
   gap: 16px;
   align-items: center;
+}
+
+.persistent-timer-bar .timer-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.persistent-timer-bar .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--green-color);
 }
 
 .persistent-timer-bar .task-name {
@@ -479,6 +497,49 @@ textarea:focus {
 
 .fab-menu-item:hover {
   background-color: var(--secondary-color);
+}
+
+/* --- CALENDARS --- */
+.calendars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.calendar {
+  background-color: var(--container-bg);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.calendar-header {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.calendar-body {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.calendar-day.header {
+  font-weight: 500;
+  color: #8e8e93;
+}
+
+.calendar-day.active {
+  background-color: var(--primary-color);
+  color: white;
 }
 
 /* --- RESPONSIVE LAYOUT --- */
