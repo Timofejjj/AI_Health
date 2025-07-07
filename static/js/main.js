@@ -57,7 +57,14 @@ function logSession(data) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
-        }).catch(error => console.error('Failed to log session:', error));
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                console.error('Failed to log session:', data.message);
+            }
+        })
+        .catch(error => console.error('Failed to log session:', error));
     }
 }
 
@@ -78,6 +85,8 @@ function initStartSessionModal() {
         if (name) {
             hideModals();
             window.location.href = `/timer/${uid}?task=${encodeURIComponent(name)}`;
+        } else {
+            alert('Пожалуйста, введите название задачи.');
         }
     });
 }
@@ -126,7 +135,7 @@ function initTimerPage() {
     appState.session.taskName = params.get('task') || 'Без названия';
     
     const taskNameEl = document.querySelector('.timer-task-name');
-    if (taskNameEl) taskNameEl.textContent = app.jqState.session.taskName;
+    if (taskNameEl) taskNameEl.textContent = appState.session.taskName;
     
     const display = document.querySelector('.time-display');
     const startPause = document.querySelector('.button-primary');
@@ -297,10 +306,39 @@ function initDynamicsPage() {
 // =======================================================
 document.addEventListener('DOMContentLoaded', () => {
     appState.userId = document.body.dataset.userId;
-    initStartSessionModal();
+    const fab = document.getElementById('timer-fab') || document.querySelector('.fab');
+    const startSessionModal = document.getElementById('task-modal');
+
+    // --- Логика плавающей кнопки (FAB) и меню ---
     initFabMenu();
     initModalClose();
     updatePersistentBar();
+
+    // --- Логика модального окна для старта сессии ---
+    if (startSessionModal) {
+        const taskForm = document.getElementById('task-form');
+        const cancelBtn = document.getElementById('close-modal-btn');
+        const taskInput = document.getElementById('task-name-input');
+        
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', hideModals);
+        }
+        
+        if (taskForm && taskInput) {
+            taskForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const taskName = taskInput.value.trim();
+                if (taskName && appState.userId) {
+                    hideModals();
+                    window.location.href = `/timer/${appState.userId}?task=${encodeURIComponent(taskName)}`;
+                } else if (!taskName) {
+                    alert('Пожалуйста, введите название задачи.');
+                }
+            });
+        }
+    }
+
+    // --- Инициализация страниц ---
     if (document.querySelector('.timer-page')) initTimerPage();
     if (document.querySelector('.dynamics-page')) initDynamicsPage();
 });
