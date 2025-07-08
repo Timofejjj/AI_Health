@@ -47,7 +47,6 @@ function updatePersistentBar() {
         bar.intervalId = null;
     }
     
-    // Используем appState.userId, который всегда должен быть установлен при загрузке страницы
     const currentUserId = appState.userId; 
     if (!currentUserId) return;
 
@@ -345,8 +344,117 @@ function initTimerPage() {
     updateUI();
 }
 
+function initDynamicsPage() {
+    const uid = document.body.dataset.userId;
+    if (!uid) {
+        console.error("User ID not found on dynamics page.");
+        return;
+    }
+    const weeksFilter = document.getElementById('weeks-filter');
+    const dayPicker = document.getElementById('day-picker');
+    const ctxDaily = document.getElementById('dailyActivityChart')?.getContext('2d');
+    const ctxHourly = document.getElementById('hourlyActivityChart')?.getContext('2d');
+    let dailyChart, hourlyChart, dataAll;
+
+    async function fetchData() {
+        try {
+            const res = await fetch(`/api/dynamics_data/${uid}`);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            dataAll = await res.json();
+            if (dataAll.error) throw new Error(dataAll.error);
+            
+            renderCalendars(dataAll.calendars);
+            
+            weeksFilter.innerHTML = '';
+            if (dataAll.total_weeks > 0) {
+                for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
+                weeksFilter.value = Math.min(4, dataAll.total_weeks);
+            }
+            
+            const today = new Date();
+            const offset = today.getTimezoneOffset();
+            const todayLocal = new Date(today.getTime() - (offset*60*1000));
+            dayPicker.value = todayLocal.toISOString().split('T')[0];
+            
+            renderDaily(weeksFilter.value);
+            renderHourly(dayPicker.value);
+        } catch (e) {
+            console.error('Failed to fetch dynamics data:', e);
+            document.getElementById('calendars-container').innerHTML = '<p>Ошибка загрузки данных. Попробуйте позже.</p>';
+        }
+    }
+
+    function renderCalendars(cals) {
+        const cont = document.getElementById('calendars-container');
+        cont.innerHTML = '';
+        if (!cals || Object.keys(cals).length === 0) {
+            cont.innerHTML = '<p>Нет данных по задачам для отображения.</p>';
+            return;
+        }
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayString = new Date(today.getTime() - (today.getTimezoneOffset()*60*1000)).toISOString().split('T')[0];
+
+        Object.entries(cals).forEach(([task, dates]) => {
+            const div = document.createElement('div');
+            div.className = 'calendar';
+            const month = new Date().getMonth();
+            const year = new Date().getFullYear();
+            let html = `<div class="calendar-header">${task}</div><div class="calendar-body">`;
+            ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(d => html += `<div class="calendar-day header">${d}</div>`);
+            
+            const date = new Date(year, month, 1);
+            const offset = date.getDay() === 0 ? 6 : date.getDay() - 1;
+            for (let i = 0; i < offset; i++) html += `<div class="calendar-day"></div>`;
+            
+            while (date.getMonth() === month) {
+                const ds = new Date(date.getTime() - (date.getTimezoneOffset()*60*1000)).toISOString().split('T')[0];
+                let cls = 'calendar-day';
+                if(dates.includes(ds)) cls += ' active';
+                if(ds === todayString) cls += ' today';
+                
+                html += `<div class="${cls}">${date.getDate()}</div>`;
+                date.setDate(date.getDate() + 1);
+            }
+            html += '</div>';
+            div.innerHTML = html;
+            cont.appendChild(div);
+        });
+    }
+
+    function renderDaily(weeks) {
+        if (!dataAll || !ctxDaily) return;
+        const days = weeks * 7;
+        const labels = dataAll.activity_by_day.labels.slice(-days);
+        const vals = dataAll.activity_by_day.data.slice(-days);
+        if (dailyChart) dailyChart.destroy();
+        dailyChart = new Chart(ctxDaily, {
+            type: 'bar',
+            data: { labels, datasets: [{ data: vals, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)'}] },
+            options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function renderHourly(day) {
+        if (!dataAll || !ctxHourly) return;
+        const arr = Array(24).fill(0);
+        dataAll.activity_by_hour.filter(d => d.date_str === day).forEach(s => arr[s.hour] += s.duration_hours);
+        if (hourlyChart) hourlyChart.destroy();
+        hourlyChart = new Chart(ctxHourly, {
+            type: 'bar',
+            data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ data: arr, label: `Часы за ${day}`, backgroundColor: 'rgba(0, 122, 255, 0.6)' }] },
+            options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    if (weeksFilter) weeksFilter.addEventListener('change', () => renderDaily(weeksFilter.value));
+    if (dayPicker) dayPicker.addEventListener('change', () => renderHourly(dayPicker.value));
+
+    fetchData();
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Эта строка теперь самая важная для исправления проблемы с undefined
     appState.userId = document.body.dataset.userId; 
 
     initFabMenu();
@@ -385,6 +493,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (document.querySelector('.timer-page')) initTimerPage();
     if (document.querySelector('.dynamics-page')) {
-        // initDynamicsPage(); // Если есть страница динамики, ее тоже нужно будет инициализировать
+        initDynamicsPage();
     }
 });
