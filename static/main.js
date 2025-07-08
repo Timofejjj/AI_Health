@@ -6,15 +6,13 @@ const appState = {
     userId: null,
     session: {
         mode: 'work', // 'work' | 'break'
-        startTime: null, // Время начала текущей фазы (работы или перерыва)
+        startTime: null, // Время начала текущего запущенного интервала
         isRunning: false,
-        pauseStartTime: null, // Время начала паузы
         taskName: null,
-        elapsedSeconds: 0,
+        elapsedSeconds: 0, // Общее кол-во секунд, прошедшее в текущей фазе (с учетом пауз)
         totalDuration: 25 * 60,
         breakDuration: 10 * 60,
         completionSoundPlayed: false,
-        elapsedSecondsBeforePause: 0
     },
     timerInterval: null,
     audioCtx: null // For sound
@@ -53,20 +51,14 @@ function updatePersistentBar() {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
         bar.querySelector('#return-to-timer-btn').href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
-
+        
         const updateBarTime = () => {
             const duration = st.mode === 'work' ? st.workDuration : st.breakDuration;
-            let remaining;
-
+            let currentElapsed = st.elapsedSeconds;
             if (st.isRunning && st.startTime) {
-                const elapsed = st.elapsedSecondsBeforePause + Math.floor((Date.now() - new Date(st.startTime).getTime()) / 1000);
-                remaining = duration - elapsed;
-            } else if (!st.isRunning && st.pauseStartTime) { // Paused
-                 remaining = duration - st.elapsedSecondsBeforePause;
-            } else { // Stopped or pending
-                remaining = duration;
+                currentElapsed += Math.floor((Date.now() - new Date(st.startTime).getTime()) / 1000);
             }
-            
+            const remaining = duration - currentElapsed;
             const isOvertime = remaining < 0;
             const displaySeconds = Math.abs(remaining);
             const minutes = Math.floor(displaySeconds / 60);
@@ -134,7 +126,7 @@ function initFabMenu() {
             e.preventDefault();
             menu.classList.remove('visible');
             const st = getTimerState();
-            if (st && st.isActive) { // Проверяем, активна ли любая сессия (работа или перерыв)
+            if (st && st.isActive) {
                 window.location.href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
             } else {
                 showModal('task-modal');
@@ -177,41 +169,44 @@ function initTimerPage() {
         const stateToSave = {
             isActive: true,
             isRunning: appState.session.isRunning,
-            pauseStartTime: appState.session.pauseStartTime,
             mode: appState.session.mode,
             userId: appState.userId,
             taskName: appState.session.taskName,
             startTime: appState.session.startTime,
-            totalDuration: appState.session.mode === 'work' ? appState.session.totalDuration : appState.session.breakDuration,
             workDuration: appState.session.totalDuration,
             breakDuration: appState.session.breakDuration,
-            elapsedSecondsBeforePause: appState.session.elapsedSecondsBeforePause,
+            elapsedSeconds: appState.session.elapsedSeconds,
             completionSoundPlayed: appState.session.completionSoundPlayed
         };
         setTimerState(stateToSave);
     }
     
-    const tick = () => {
-        if (!appState.session.isRunning || !appState.session.startTime) return;
-
-        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause + elapsedSinceLastStart;
-
+    function tick() {
+        if (!appState.session.isRunning) return;
+        
+        let currentTotalElapsed = appState.session.elapsedSeconds;
+        if (appState.session.startTime) {
+            currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        }
+        
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
         
-        // Play sound on completion, but don't stop the timer
-        if (appState.session.elapsedSeconds >= duration && !appState.session.completionSoundPlayed) {
+        if (currentTotalElapsed >= duration && !appState.session.completionSoundPlayed) {
             playSound();
             appState.session.completionSoundPlayed = true;
-            saveCurrentState();
         }
         updateUI();
     };
 
     function updateUI() {
+        let currentTotalElapsed = appState.session.elapsedSeconds;
+        if (appState.session.isRunning && appState.session.startTime) {
+            currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        }
+
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
-        const remaining = duration - appState.session.elapsedSeconds;
-        const isOvertime = appState.session.mode === 'work' && remaining < 0;
+        const remaining = duration - currentTotalElapsed;
+        const isOvertime = remaining < 0;
 
         const minutes = Math.floor(Math.abs(remaining) / 60);
         const seconds = Math.abs(remaining) % 60;
@@ -228,115 +223,81 @@ function initTimerPage() {
             workControls.classList.add('hidden');
             breakControls.classList.remove('hidden');
             sessionLabel.textContent = 'ПЕРЕРЫВ';
-            startBreakBtn.textContent = appState.session.isRunning ? 'Завершить перерыв' : 'Начать перерыв';
+            startBreakBtn.textContent = appState.session.isRunning ? 'Пауза' : 'Начать перерыв';
             startBreakBtn.classList.toggle('paused', appState.session.isRunning);
         }
         decreaseBtn.disabled = appState.session.isRunning || appState.session.elapsedSeconds > 0;
         increaseBtn.disabled = appState.session.isRunning || appState.session.elapsedSeconds > 0;
         workPresets.forEach(p => p.disabled = appState.session.isRunning || appState.session.elapsedSeconds > 0);
-        updatePersistentBar();
         decreaseBreakBtn.disabled = appState.session.isRunning;
         increaseBreakBtn.disabled = appState.session.isRunning;
+        updatePersistentBar();
     }
     
-    function startWork() {
+    function startTimer() {
         if (appState.session.isRunning) return;
-        if (appState.session.mode !== 'work') { // Reset if switching from break
-            appState.session.elapsedSeconds = 0;
-            appState.session.elapsedSecondsBeforePause = 0;
-        }
-        appState.session.mode = 'work';
-        
-        // If resuming from pause, adjust start time
-        if (appState.session.pauseStartTime) {
-            const pauseDuration = Date.now() - new Date(appState.session.pauseStartTime).getTime();
-            appState.session.startTime = new Date(new Date(appState.session.startTime).getTime() + pauseDuration).toISOString();
-            appState.session.pauseStartTime = null;
-        } else {
-            // If starting fresh or from a stop
-            appState.session.startTime = new Date().toISOString();
-        }
-
         appState.session.isRunning = true;
-        appState.timerInterval = setInterval(tick, 1000);
-        saveCurrentState();
-        updateUI();
-    }
-
-    function pauseWork() {
-        if (!appState.session.isRunning) return;
-        clearInterval(appState.timerInterval);
-        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        appState.session.elapsedSecondsBeforePause += elapsedSinceLastStart;
-        appState.session.isRunning = false;
-        appState.session.pauseStartTime = new Date().toISOString();
-        saveCurrentState();
-        updateUI();
-    }
-
-    function endWorkSession() {
-        clearInterval(appState.timerInterval);
-        const st = getTimerState();
-        if (st && st.isActive && st.mode === 'work') {
-            // Log actual elapsed time, including overtime
-            const finalElapsed = appState.session.isRunning 
-                ? appState.session.elapsedSecondsBeforePause + Math.floor((Date.now() - new Date(appState.session.startTime).getTime())/1000)
-                : appState.session.elapsedSecondsBeforePause;
-
-            logSession({
-                user_id: uid, task_name: st.taskName, start_time: st.startTime,
-                end_time: new Date().toISOString(), duration_seconds: finalElapsed
-            });
-        }
-        appState.session.isRunning = false;
-        appState.session.mode = 'break';
-        appState.session.elapsedSeconds = 0;
-        appState.session.elapsedSecondsBeforePause = 0;
-        appState.session.startTime = null; // сброс, установится при старте перерыва
-        appState.session.completionSoundPlayed = false; // Reset for break
-        saveCurrentState(); // Сохраняем состояние "ожидания перерыва"
-        updateUI();
-    }
-
-    function startBreak() {
-        if (appState.session.isRunning) return;
         appState.session.startTime = new Date().toISOString();
         appState.timerInterval = setInterval(tick, 1000);
         saveCurrentState();
         updateUI();
     }
-    
-    function endBreak() {
+
+    function pauseTimer() {
+        if (!appState.session.isRunning) return;
         clearInterval(appState.timerInterval);
+        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        appState.session.elapsedSeconds += elapsedSinceLastStart;
         appState.session.isRunning = false;
-        appState.session.mode = 'work';
-        appState.session.elapsedSeconds = 0;
-        appState.session.elapsedSecondsBeforePause = 0;
-        appState.session.startTime = null; 
-        appState.session.totalDuration = 25 * 60;
-        appState.session.completionSoundPlayed = false; // Reset for next work session
-        clearTimerState(); // Полное завершение цикла
+        appState.session.startTime = null;
+        saveCurrentState();
         updateUI();
     }
 
-    startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseWork() : startWork());
-    stopBtn.addEventListener('click', endWorkSession);
-    decreaseBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 300); updateUI(); });
-    increaseBtn.addEventListener('click', () => { appState.session.totalDuration = Math.min(180 * 60, appState.session.totalDuration + 300); updateUI(); });
-    workPresets.forEach(btn => btn.addEventListener('click', () => { appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; updateUI(); }));
-    decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); });
-    increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.min(60 * 60, appState.session.breakDuration + 60); updateUI(); });
+    function endWorkSession() {
+        pauseTimer(); // Останавливаем таймер и сохраняем финальное время
+        const st = getTimerState();
+        if (st && st.isActive && st.mode === 'work') {
+             logSession({
+                user_id: uid, task_name: st.taskName, start_time: st.startTime || new Date(Date.now() - st.elapsedSeconds * 1000).toISOString(),
+                end_time: new Date().toISOString(), duration_seconds: st.elapsedSeconds
+            });
+        }
+        appState.session.mode = 'break';
+        appState.session.elapsedSeconds = 0;
+        appState.session.completionSoundPlayed = false;
+        saveCurrentState();
+        updateUI();
+    }
     
-    // When start break is clicked, it should just start, not toggle. The button text changes via UI update.
-    startBreakBtn.addEventListener('click', startBreak);
+    function endBreak() {
+        pauseTimer();
+        appState.session.mode = 'work';
+        appState.session.elapsedSeconds = 0;
+        appState.session.totalDuration = 25 * 60;
+        appState.session.completionSoundPlayed = false;
+        clearTimerState(); // Полностью сбрасываем состояние
+        updateUI();
+    }
 
-    startBreakBtn.addEventListener('click', () => appState.session.isRunning ? endBreak() : startBreak());
+    startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
+    stopBtn.addEventListener('click', endWorkSession);
+    startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     skipBreakBtn.addEventListener('click', endBreak);
+    
+    decreaseBtn.addEventListener('click', () => { if (!appState.session.isRunning) { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 300); updateUI(); }});
+    increaseBtn.addEventListener('click', () => { if (!appState.session.isRunning) { appState.session.totalDuration = Math.min(180 * 60, appState.session.totalDuration + 300); updateUI(); }});
+    workPresets.forEach(btn => btn.addEventListener('click', () => { if (!appState.session.isRunning) { appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; updateUI(); }}));
+    decreaseBreakBtn.addEventListener('click', () => { if (!appState.session.isRunning) { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); }});
+    increaseBreakBtn.addEventListener('click', () => { if (!appState.session.isRunning) { appState.session.breakDuration = Math.min(60 * 60, appState.session.breakDuration + 60); updateUI(); }});
+
     breakPresets.forEach(btn => {
         btn.addEventListener('click', () => {
+            if (appState.session.isRunning) return;
             breakPresets.forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60;
+            updateUI();
         });
     });
 
@@ -345,26 +306,13 @@ function initTimerPage() {
         appState.session.mode = existingState.mode;
         appState.session.totalDuration = existingState.workDuration;
         appState.session.breakDuration = existingState.breakDuration;
-        appState.session.elapsedSecondsBeforePause = existingState.elapsedSecondsBeforePause || 0;
+        appState.session.elapsedSeconds = existingState.elapsedSeconds || 0;
         appState.session.completionSoundPlayed = existingState.completionSoundPlayed || false;
-        appState.session.startTime = existingState.startTime;
-        appState.session.isRunning = existingState.isRunning;
         
-        // If page was reloaded while paused, account for the time it was paused
-        if (!appState.session.isRunning && existingState.pauseStartTime) {
-            const pauseDuration = Date.now() - new Date(existingState.pauseStartTime).getTime();
-            appState.session.startTime = new Date(new Date(appState.session.startTime).getTime() + pauseDuration).toISOString();
-        }
-        
-        if (appState.session.isRunning && appState.session.startTime) {
-            const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-            appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause + elapsedSinceLastStart;
+        if (existingState.isRunning) {
+            appState.session.startTime = existingState.startTime;
+            appState.session.isRunning = true;
             appState.timerInterval = setInterval(tick, 1000);
-        } else if (appState.session.mode === 'break' && !appState.session.isRunning) {
-             appState.session.elapsedSeconds = 0; // Break always resets to 0 when not running
-        }
-        else {
-             appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause;
         }
     }
     updateUI();
@@ -394,7 +342,11 @@ function initDynamicsPage() {
             for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
             weeksFilter.value = Math.min(4, dataAll.total_weeks);
             
-            dayPicker.value = new Date().toISOString().split('T')[0];
+            // Устанавливаем текущую дату в формате YYYY-MM-DD
+            const today = new Date();
+            const offset = today.getTimezoneOffset();
+            const todayLocal = new Date(today.getTime() - (offset*60*1000));
+            dayPicker.value = todayLocal.toISOString().split('T')[0];
             
             renderDaily(weeksFilter.value);
             renderHourly(dayPicker.value);
@@ -413,17 +365,26 @@ function initDynamicsPage() {
         }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        const todayString = today.toISOString().split('T')[0];
+
         Object.entries(cals).forEach(([task, dates]) => {
             const div = document.createElement('div');
             div.className = 'calendar';
+            const month = new Date().getMonth();
+            const year = new Date().getFullYear();
             let html = `<div class="calendar-header">${task}</div><div class="calendar-body">`;
             ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(d => html += `<div class="calendar-day header">${d}</div>`);
-            const date = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            const date = new Date(year, month, 1);
             const offset = date.getDay() === 0 ? 6 : date.getDay() - 1;
             for (let i = 0; i < offset; i++) html += `<div class="calendar-day"></div>`;
-            while (date.getMonth() === today.getMonth()) {
+            
+            while (date.getMonth() === month) {
                 const ds = date.toISOString().split('T')[0];
-                let cls = 'calendar-day' + (dates.includes(ds) ? ' active' : '') + (date.getTime() === today.getTime() ? ' today' : '');
+                let cls = 'calendar-day';
+                if(dates.includes(ds)) cls += ' active';
+                if(ds === todayString) cls += ' today';
+                
                 html += `<div class="${cls}">${date.getDate()}</div>`;
                 date.setDate(date.getDate() + 1);
             }
@@ -442,14 +403,15 @@ function initDynamicsPage() {
         dailyChart = new Chart(ctxDaily, {
             type: 'bar',
             data: { labels, datasets: [{ data: vals, label: 'Часы работы', backgroundColor: 'rgba(0, 122, 255, 0.6)'}] },
-            options: { scales: { y: { beginAtZero: true, max: 15 } }, plugins: { legend: { display: false } } }
+            options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
         });
     }
 
     function renderHourly(day) {
         if (!dataAll || !ctxHourly) return;
         const arr = Array(24).fill(0);
-        dataAll.activity_by_hour.filter(d => d.start_time.startsWith(day)).forEach(s => arr[s.hour] += s.duration_hours);
+        // Фильтруем по строке даты, которую присылает бэкенд
+        dataAll.activity_by_hour.filter(d => d.date_str === day).forEach(s => arr[s.hour] += s.duration_hours);
         if (hourlyChart) hourlyChart.destroy();
         hourlyChart = new Chart(ctxHourly, {
             type: 'bar',
