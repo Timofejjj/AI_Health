@@ -7,7 +7,10 @@
     <header class="timer-header">
         <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">←</a>
         <h1 id="task-title-header">{{ task_name }}</h1>
-        <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary button-small">Отчёты</a>
+        <div style="display: flex; gap: 8px;">
+            <button id="force-end-session-btn" class="button button-small" style="background-color: var(--danger-color);">Завершить всё</button>
+            <a href="{{ url_for('dynamics', user_id=user_id) }}" class="button button-secondary button-small">Отчёты</a>
+        </div>
     </header>
 
     <div class="timer-container">
