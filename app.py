@@ -176,8 +176,6 @@ def login():
         user_found = None
         for user in users:
             if str(user.get('user_id')) == user_id:
-                # ВНИМАНИЕ: Хранение паролей в открытом виде небезопасно.
-                # Это сделано для простоты. В реальном проекте используйте хэширование.
                 if str(user.get('password')) == password:
                     return redirect(url_for('dashboard', user_id=user_id))
                 else:
@@ -272,53 +270,49 @@ def get_dynamics_data(user_id):
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
         
-        # --- ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ ---
-        # Конвертируем UTC время в локальное (Московское) для всех расчетов
         df['start_time_local'] = df['start_time'].dt.tz_convert('Europe/Moscow')
 
+        # Более надежное определение колонки с названием задачи
         if 'task_name_normalized' in df.columns and df['task_name_normalized'].notna().any():
             if 'task_name_raw' in df.columns:
                  df['task_name_normalized'].fillna(df['task_name_raw'], inplace=True)
             task_col = 'task_name_normalized'
+        elif 'task_name_raw' in df.columns:
+            task_col = 'task_name_raw'
         else:
-            task_col = 'task_name_raw' if 'task_name_raw' in df.columns else 'task_name'
+            task_col = 'task_name'
         
-        work = df.copy()
-        if work.empty: return jsonify(empty)
+        # Убедимся, что колонка существует, прежде чем ее использовать
+        if task_col not in df.columns:
+            print(f"Критическая ошибка: колонка с задачами '{task_col}' не найдена в данных.")
+            return jsonify(empty)
+
+        calendars = {t: df[df[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in df[task_col].unique()}
         
-        # Календарь: используем локальную дату
-        calendars = {t: work[work[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
+        df['date'] = df['start_time_local'].dt.date
+        df['duration_hours'] = pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0) / 3600
         
-        # Активность по дням: группируем по локальной дате
-        work['date'] = work['start_time_local'].dt.date
-        work['duration_hours'] = pd.to_numeric(work['duration_seconds'], errors='coerce').fillna(0) / 3600
-        
-        first = work['start_time_local'].min().date()
+        first = df['start_time_local'].min().date()
         last = datetime.now(timezone.utc).astimezone(parser.gettz('Europe/Moscow')).date()
         weeks = max(1, (last - first).days // 7 + 1)
         
-        daily = work.groupby('date')['duration_hours'].sum()
-        if daily.empty:
-            all_days_index, daily_data = [], []
-        else:
-            all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
-            daily = daily.reindex(all_days, fill_value=0)
-            all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
-            daily_data = daily.tolist()
+        daily = df.groupby('date')['duration_hours'].sum()
+        all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
+        daily = daily.reindex(all_days, fill_value=0)
+        all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
+        daily_data = daily.tolist()
 
-        # Активность по часам: используем час из локального времени
-        hourly_df = work.copy()
-        hourly_df['hour'] = hourly_df['start_time_local'].dt.hour
-        
-        # Формируем данные для почасового графика: дата, час, длительность
-        hourly_records = hourly_df[['start_time_local', 'hour', 'duration_hours']].rename(columns={'start_time_local': 'date_str'})
-        hourly_records['date_str'] = hourly_records['date_str'].dt.strftime('%Y-%m-%d')
+        # Создаем данные для почасового графика явно, чтобы избежать ошибок
+        hourly_output = pd.DataFrame()
+        hourly_output['date_str'] = df['start_time_local'].dt.strftime('%Y-%m-%d')
+        hourly_output['hour'] = df['start_time_local'].dt.hour
+        hourly_output['duration_hours'] = df['duration_hours']
         
         return jsonify({
             'calendars': calendars,
             'total_weeks': weeks,
             'activity_by_day': {'labels': all_days_index, 'data': daily_data},
-            'activity_by_hour': hourly_records.to_dict('records') # Отправляем данные с локальным часом
+            'activity_by_hour': hourly_output.to_dict('records')
         })
     except Exception as e:
         print(f"Критическая ошибка в get_dynamics_data: {e}")
