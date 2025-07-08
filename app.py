@@ -276,7 +276,14 @@ def get_dynamics_data(user_id):
         if not records: return jsonify(empty)
         
         df = pd.DataFrame(records)
+        # Ensure start_time is a timezone-aware datetime object, localized to UTC
+        # This handles cases where timezone info might be missing or incorrect
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
+        if df['start_time'].dt.tz is None:
+            df['start_time'] = df['start_time'].dt.tz_localize('UTC')
+        else:
+            df['start_time'] = df['start_time'].dt.tz_convert('UTC')
+
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
         
@@ -293,10 +300,17 @@ def get_dynamics_data(user_id):
         work = df.copy() # Используем все данные, т.к. session_type не всегда есть
         if work.empty: return jsonify(empty)
         
-        calendars = {t: work[work[task_col]==t]['start_time'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
+        # Convert UTC time to a local timezone (e.g., Moscow) for accurate date representation
+        try:
+            # This is more robust as it handles DST
+            work['start_time_local'] = work['start_time'].dt.tz_convert('Europe/Moscow')
+        except Exception:
+            # Fallback for environments where timezone data is not available
+            work['start_time_local'] = work['start_time'] + pd.Timedelta(hours=3)
         
-        work['date'] = work['start_time'].dt.date
-        work['hour'] = work['start_time'].dt.hour
+        calendars = {t: work[work[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
+        work['date'] = work['start_time_local'].dt.date
+        work['hour'] = work['start_time_local'].dt.hour
         work['duration_hours'] = pd.to_numeric(work['duration_seconds'], errors='coerce').fillna(0) / 3600
         
         first = work['start_time'].min().date()
