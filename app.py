@@ -363,7 +363,9 @@ def get_dynamics_data(user_id):
         if df.empty: 
             return jsonify(empty)
 
-        if 'start_time' not in df.columns or 'duration_seconds' not in df.columns or 'session_type' not in df.columns:
+        required_cols = ['start_time', 'duration_seconds', 'session_type']
+        if not all(col in df.columns for col in required_cols):
+            print(f"Ошибка: отсутствуют необходимые колонки в Google Sheet. Требуются: {required_cols}")
             return jsonify(empty)
 
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
@@ -371,7 +373,6 @@ def get_dynamics_data(user_id):
         if df.empty: 
             return jsonify(empty)
         
-        # Фильтруем только рабочие сессии для анализа
         work_sessions = df[df['session_type'] == 'Работа'].copy()
         if work_sessions.empty:
             return jsonify(empty)
