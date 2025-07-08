@@ -8,7 +8,7 @@ import markdown
 import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from google.oauth2.service_account import Credentials
-from dateutil import parser, tz # Импортируем tz для работы с часовыми поясами
+from dateutil import parser, tz
 
 # --- КОНФИГУРАЦИЯ ---
 app = Flask(__name__)
@@ -62,12 +62,14 @@ except Exception as e:
 
 # --- ФУНКЦИИ-ПОМОЩНИКИ ---
 def get_dynamic_greeting():
+    # ... (код этой функции не меняется)
     hour = (datetime.now(timezone.utc).hour + 3) % 24
     if 4 <= hour < 12: return "Доброе утро"
     if 12 <= hour < 17: return "Добрый день"
     return "Добрый вечер"
 
 def get_data_from_sheet(worksheet, user_id):
+    # ... (код этой функции не меняется)
     if not worksheet: return []
     try:
         records = worksheet.get_all_records()
@@ -108,7 +110,6 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
         print(f"Ошибка нормализации с помощью ИИ: {e}")
         return new_task_name
 
-
 def get_last_analysis_timestamp(analyses):
     # ... (код этой функции не меняется)
     if not analyses: return None
@@ -133,9 +134,7 @@ def generate_analysis_report(thoughts, timers):
     # ... (код этой функции не меняется)
     if not gemini_model: return "Модель анализа недоступна."
     if not thoughts and not timers: return "Нет новых данных для анализа."
-
     thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
-    
     if timers:
         df = pd.DataFrame(timers)
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
@@ -143,17 +142,13 @@ def generate_analysis_report(thoughts, timers):
         timer_text = "\n".join(f"- Задача: '{row['task_name']}', {row['duration_minutes']} мин" for _, row in df.iterrows())
     else:
         timer_text = "Нет данных об активности."
-    
     prompt = f"""
 # ЗАДАЧА
 Провести комплексный анализ моих мыслей и рабочей активности.
-
 # МЫСЛИ
 {thoughts_text}
-
 # АКТИВНОСТЬ
 {timer_text}
-
 # ОТВЕТ
 1. Краткое резюме и главная тема
 2. Связь между работой и мыслями
@@ -166,7 +161,6 @@ def generate_analysis_report(thoughts, timers):
     except Exception as e:
         return f"Ошибка генерации анализа: {e}"
 
-
 # --- МАРШРУТЫ ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -174,13 +168,10 @@ def login():
     if request.method == 'POST':
         user_id = request.form.get('user_id')
         password = request.form.get('password')
-        
         if not worksheet_users:
             flash("Сервис пользователей недоступен.", "danger")
             return render_template('login.html')
-
         users = worksheet_users.get_all_records()
-        user_found = None
         for user in users:
             if str(user.get('user_id')) == user_id:
                 if str(user.get('password')) == password:
@@ -188,7 +179,6 @@ def login():
                 else:
                     flash("Неверный ID или пароль.", "danger")
                     return render_template('login.html')
-        
         flash("Неверный ID или пароль.", "danger")
         return render_template('login.html')
     return render_template('login.html')
@@ -246,45 +236,30 @@ def dynamics(user_id):
     # ... (код этого маршрута не меняется)
     return render_template('dynamics.html', user_id=user_id)
 
-
 # --- API МАРШРУТЫ ---
 @app.route('/api/log_session', methods=['POST'])
 def log_timer_session():
+    # ... (код этого маршрута не меняется)
     if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
     data = request.json
     required = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds']
     if not all(k in data for k in required): return jsonify({'status': 'error', 'message': f'Missing fields: {required}'}), 400
-    
     try:
         user_id = str(data['user_id'])
         new_task_name = str(data['task_name'])
-        
-        # --- ИСПРАВЛЕНИЕ ВРЕМЕНИ ПРИ ЗАПИСИ ---
-        # 1. Задаем целевой часовой пояс
         local_tz = tz.gettz('Europe/Moscow')
-
-        # 2. Парсим строки времени UTC, пришедшие от клиента
         start_time_utc = parser.isoparse(data['start_time'])
         end_time_utc = parser.isoparse(data['end_time'])
-
-        # 3. Конвертируем время в локальное (Московское)
         start_time_local = start_time_utc.astimezone(local_tz)
         end_time_local = end_time_utc.astimezone(local_tz)
-
-        # 4. Форматируем локальное время в строку для записи в таблицу
-        #    Используем формат без информации о часовом поясе, т.к. мы уже знаем, что это Москва.
         start_time_str = start_time_local.strftime('%Y-%m-%d %H:%M:%S')
         end_time_str = end_time_local.strftime('%Y-%m-%d %H:%M:%S')
-        
         all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
         existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
         normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
         duration = int(data['duration_seconds'])
-        
-        # 5. Записываем в таблицу уже локальное время
         row = [user_id, new_task_name, normalized_task, start_time_str, end_time_str, duration]
         worksheet_timer_logs.append_row(row)
-        
         return jsonify({'status': 'success'})
     except Exception as e:
         print(f"Ошибка сохранения сессии: {e}")
@@ -300,16 +275,12 @@ def get_dynamics_data(user_id):
         df = pd.DataFrame(records)
         if df.empty: return jsonify(empty)
 
-        # --- ИСПРАВЛЕНИЕ ВРЕМЕНИ ПРИ ЧТЕНИИ ---
-        # 1. Читаем время как "наивное" (без часового пояса), т.к. мы сохранили его в локальном формате
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
         
-        # 2. Указываем pandas, что это время на самом деле Московское
         df['start_time_local'] = df['start_time'].dt.tz_localize('Europe/Moscow', ambiguous='infer')
 
-        # Дальнейшая логика остается почти без изменений, т.к. она уже работает с start_time_local
         if 'task_name_normalized' in df.columns and df['task_name_normalized'].notna().any():
             if 'task_name_raw' in df.columns:
                  df['task_name_normalized'].fillna(df['task_name_raw'], inplace=True)
@@ -333,14 +304,20 @@ def get_dynamics_data(user_id):
         weeks = max(1, (last - first).days // 7 + 1)
         
         daily = df.groupby('date')['duration_hours'].sum()
-        all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
-        daily = daily.reindex(all_days, fill_value=0)
-        all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
-        daily_data = daily.tolist()
+        # Проверка, что daily не пустой, прежде чем вызывать .index.min()/.max()
+        if daily.empty:
+            all_days_index = []
+            daily_data = []
+        else:
+            all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
+            daily = daily.reindex(all_days, fill_value=0)
+            all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
+            daily_data = daily.tolist()
 
         hourly_output = pd.DataFrame()
         hourly_output['date_str'] = df['start_time_local'].dt.strftime('%Y-%m-%d')
-        hourly_output['hour'] = df['start__local'].dt.hour
+        # ИСПРАВЛЕНА ОПЕЧАТКА: start__local -> start_time_local
+        hourly_output['hour'] = df['start_time_local'].dt.hour
         hourly_output['duration_hours'] = df['duration_hours']
         
         return jsonify({
