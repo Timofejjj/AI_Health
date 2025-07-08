@@ -46,12 +46,16 @@ function updatePersistentBar() {
         clearInterval(bar.intervalId);
         bar.intervalId = null;
     }
+    
+    // Используем appState.userId, который всегда должен быть установлен при загрузке страницы
+    const currentUserId = appState.userId; 
+    if (!currentUserId) return;
 
     if (st && st.isActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
         
-        const href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName || '')}`;
+        const href = `/timer/${currentUserId}?task=${encodeURIComponent(st.taskName || '')}`;
         bar.querySelector('#return-to-timer-btn').href = href;
         
         const updateBarTime = () => {
@@ -128,7 +132,7 @@ function initFabMenu() {
                     location: st.location || '',
                     feeling_start: st.feeling_start || ''
                 });
-                window.location.href = `/timer/${st.userId}?${params.toString()}`;
+                window.location.href = `/timer/${appState.userId}?${params.toString()}`;
             } else {
                 showModal('task-modal');
             }
@@ -141,8 +145,6 @@ function initModalClose() {
 }
 
 function initTimerPage() {
-    const uid = document.body.dataset.userId;
-    appState.userId = uid;
     const params = new URLSearchParams(location.search);
     
     let taskNameFromUrl = params.get('task') || 'Без названия';
@@ -282,8 +284,6 @@ function initTimerPage() {
         appState.session.mode = 'work';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
-        // Важно: Не сбрасываем taskName, location, feeling_start,
-        // чтобы можно было продолжить ту же задачу
         saveCurrentState();
         updateUI();
     }
@@ -308,7 +308,7 @@ function initTimerPage() {
     startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
-    skipBreakBtn.addEventListener('click', switchToWorkMode); // ИСПРАВЛЕНО
+    skipBreakBtn.addEventListener('click', switchToWorkMode);
     forceEndBtn.addEventListener('click', forceEndSession);
     
     decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); updateUI(); });
@@ -346,7 +346,9 @@ function initTimerPage() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    appState.userId = document.body.dataset.userId;
+    // Эта строка теперь самая важная для исправления проблемы с undefined
+    appState.userId = document.body.dataset.userId; 
+
     initFabMenu();
     initModalClose();
     updatePersistentBar();
