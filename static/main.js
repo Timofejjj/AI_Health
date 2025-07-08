@@ -257,10 +257,13 @@ function initTimerPage() {
     function endWorkSession() {
         pauseTimer(); // Останавливаем таймер и сохраняем финальное время
         const st = getTimerState();
-        if (st && st.isActive && st.mode === 'work') {
+        if (st && st.isActive && st.mode === 'work' && st.elapsedSeconds > 0) {
              logSession({
-                user_id: uid, task_name: st.taskName, start_time: st.startTime || new Date(Date.now() - st.elapsedSeconds * 1000).toISOString(),
-                end_time: new Date().toISOString(), duration_seconds: st.elapsedSeconds
+                user_id: uid, 
+                task_name: st.taskName, 
+                start_time: new Date(Date.now() - st.elapsedSeconds * 1000).toISOString(),
+                end_time: new Date().toISOString(), 
+                duration_seconds: st.elapsedSeconds
             });
         }
         appState.session.mode = 'break';
@@ -339,10 +342,12 @@ function initDynamicsPage() {
             renderCalendars(dataAll.calendars);
             
             weeksFilter.innerHTML = '';
-            for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
-            weeksFilter.value = Math.min(4, dataAll.total_weeks);
+            // Проверка, есть ли данные для фильтра
+            if (dataAll.total_weeks > 0) {
+                for (let i = 1; i <= dataAll.total_weeks; i++) weeksFilter.add(new Option(`${i} нед.`, i));
+                weeksFilter.value = Math.min(4, dataAll.total_weeks);
+            }
             
-            // Устанавливаем текущую дату в формате YYYY-MM-DD
             const today = new Date();
             const offset = today.getTimezoneOffset();
             const todayLocal = new Date(today.getTime() - (offset*60*1000));
@@ -365,7 +370,7 @@ function initDynamicsPage() {
         }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const todayString = today.toISOString().split('T')[0];
+        const todayString = new Date(today.getTime() - (today.getTimezoneOffset()*60*1000)).toISOString().split('T')[0];
 
         Object.entries(cals).forEach(([task, dates]) => {
             const div = document.createElement('div');
@@ -380,7 +385,7 @@ function initDynamicsPage() {
             for (let i = 0; i < offset; i++) html += `<div class="calendar-day"></div>`;
             
             while (date.getMonth() === month) {
-                const ds = date.toISOString().split('T')[0];
+                const ds = new Date(date.getTime() - (date.getTimezoneOffset()*60*1000)).toISOString().split('T')[0];
                 let cls = 'calendar-day';
                 if(dates.includes(ds)) cls += ' active';
                 if(ds === todayString) cls += ' today';
@@ -410,7 +415,7 @@ function initDynamicsPage() {
     function renderHourly(day) {
         if (!dataAll || !ctxHourly) return;
         const arr = Array(24).fill(0);
-        // Фильтруем по строке даты, которую присылает бэкенд
+        // ИСПРАВЛЕНО: Фильтруем по d.date_str, которое присылает бэкенд
         dataAll.activity_by_hour.filter(d => d.date_str === day).forEach(s => arr[s.hour] += s.duration_hours);
         if (hourlyChart) hourlyChart.destroy();
         hourlyChart = new Chart(ctxHourly, {
