@@ -8,12 +8,16 @@ const appState = {
         mode: 'work', // 'work' | 'break'
         startTime: null, // Время начала текущей фазы (работы или перерыва)
         isRunning: false,
+        pauseStartTime: null, // Время начала паузы
         taskName: null,
         elapsedSeconds: 0,
         totalDuration: 25 * 60,
-        breakDuration: 10 * 60
+        breakDuration: 10 * 60,
+        completionSoundPlayed: false,
+        elapsedSecondsBeforePause: 0
     },
-    timerInterval: null
+    timerInterval: null,
+    audioCtx: null // For sound
 };
 
 function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
@@ -49,11 +53,21 @@ function updatePersistentBar() {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
         bar.querySelector('#return-to-timer-btn').href = `/timer/${st.userId}?task=${encodeURIComponent(st.taskName)}`;
-        
+
         const updateBarTime = () => {
-            const elapsed = Math.floor((Date.now() - new Date(st.startTime).getTime()) / 1000);
-            const remaining = st.totalDuration - elapsed;
-            const isOvertime = st.mode === 'work' && remaining < 0;
+            const duration = st.mode === 'work' ? st.workDuration : st.breakDuration;
+            let remaining;
+
+            if (st.isRunning && st.startTime) {
+                const elapsed = st.elapsedSecondsBeforePause + Math.floor((Date.now() - new Date(st.startTime).getTime()) / 1000);
+                remaining = duration - elapsed;
+            } else if (!st.isRunning && st.pauseStartTime) { // Paused
+                 remaining = duration - st.elapsedSecondsBeforePause;
+            } else { // Stopped or pending
+                remaining = duration;
+            }
+            
+            const isOvertime = remaining < 0;
             const displaySeconds = Math.abs(remaining);
             const minutes = Math.floor(displaySeconds / 60);
             const seconds = displaySeconds % 60;
@@ -66,6 +80,26 @@ function updatePersistentBar() {
     } else {
         bar.classList.remove('visible');
     }
+}
+
+// =======================================================
+//        ЗВУКОВОЕ ОПОВЕЩЕНИЕ
+// =======================================================
+function playSound() {
+    if (!appState.audioCtx) {
+        try {
+            appState.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.error("Web Audio API is not supported in this browser");
+            return;
+        }
+    }
+    const oscillator = appState.audioCtx.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(440, appState.audioCtx.currentTime);
+    oscillator.connect(appState.audioCtx.destination);
+    oscillator.start();
+    oscillator.stop(appState.audioCtx.currentTime + 0.5);
 }
 
 // =======================================================
@@ -130,6 +164,8 @@ function initTimerPage() {
     const stopBtn = workControls.querySelector('.control-btn-secondary');
     const decreaseBtn = document.getElementById('decrease-time-btn');
     const increaseBtn = document.getElementById('increase-time-btn');
+    const decreaseBreakBtn = document.getElementById('decrease-break-btn');
+    const increaseBreakBtn = document.getElementById('increase-break-btn');
     const workPresets = workControls.querySelectorAll('.time-preset-btn');
     const breakControls = document.getElementById('break-session-controls');
     const startBreakBtn = document.getElementById('start-break-btn');
@@ -141,6 +177,7 @@ function initTimerPage() {
         const stateToSave = {
             isActive: true,
             isRunning: appState.session.isRunning,
+            pauseStartTime: appState.session.pauseStartTime,
             mode: appState.session.mode,
             userId: appState.userId,
             taskName: appState.session.taskName,
@@ -148,18 +185,25 @@ function initTimerPage() {
             totalDuration: appState.session.mode === 'work' ? appState.session.totalDuration : appState.session.breakDuration,
             workDuration: appState.session.totalDuration,
             breakDuration: appState.session.breakDuration,
+            elapsedSecondsBeforePause: appState.session.elapsedSecondsBeforePause,
+            completionSoundPlayed: appState.session.completionSoundPlayed
         };
         setTimerState(stateToSave);
     }
     
     const tick = () => {
-        appState.session.elapsedSeconds = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        if (!appState.session.isRunning || !appState.session.startTime) return;
+
+        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause + elapsedSinceLastStart;
+
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
         
-        if (appState.session.elapsedSeconds >= duration && appState.session.mode === 'work') {
-            endWorkSession();
-        } else if (appState.session.elapsedSeconds >= duration && appState.session.mode === 'break') {
-            endBreak();
+        // Play sound on completion, but don't stop the timer
+        if (appState.session.elapsedSeconds >= duration && !appState.session.completionSoundPlayed) {
+            playSound();
+            appState.session.completionSoundPlayed = true;
+            saveCurrentState();
         }
         updateUI();
     };
@@ -191,14 +235,29 @@ function initTimerPage() {
         increaseBtn.disabled = appState.session.isRunning || appState.session.elapsedSeconds > 0;
         workPresets.forEach(p => p.disabled = appState.session.isRunning || appState.session.elapsedSeconds > 0);
         updatePersistentBar();
+        decreaseBreakBtn.disabled = appState.session.isRunning;
+        increaseBreakBtn.disabled = appState.session.isRunning;
     }
     
     function startWork() {
         if (appState.session.isRunning) return;
-        appState.session.isRunning = true;
-        if (!appState.session.startTime || appState.session.mode !== 'work') {
+        if (appState.session.mode !== 'work') { // Reset if switching from break
+            appState.session.elapsedSeconds = 0;
+            appState.session.elapsedSecondsBeforePause = 0;
+        }
+        appState.session.mode = 'work';
+        
+        // If resuming from pause, adjust start time
+        if (appState.session.pauseStartTime) {
+            const pauseDuration = Date.now() - new Date(appState.session.pauseStartTime).getTime();
+            appState.session.startTime = new Date(new Date(appState.session.startTime).getTime() + pauseDuration).toISOString();
+            appState.session.pauseStartTime = null;
+        } else {
+            // If starting fresh or from a stop
             appState.session.startTime = new Date().toISOString();
         }
+
+        appState.session.isRunning = true;
         appState.timerInterval = setInterval(tick, 1000);
         saveCurrentState();
         updateUI();
@@ -206,8 +265,11 @@ function initTimerPage() {
 
     function pauseWork() {
         if (!appState.session.isRunning) return;
-        appState.session.isRunning = false;
         clearInterval(appState.timerInterval);
+        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        appState.session.elapsedSecondsBeforePause += elapsedSinceLastStart;
+        appState.session.isRunning = false;
+        appState.session.pauseStartTime = new Date().toISOString();
         saveCurrentState();
         updateUI();
     }
@@ -216,23 +278,28 @@ function initTimerPage() {
         clearInterval(appState.timerInterval);
         const st = getTimerState();
         if (st && st.isActive && st.mode === 'work') {
-            const durationToSend = Math.min(appState.session.elapsedSeconds, appState.session.totalDuration);
+            // Log actual elapsed time, including overtime
+            const finalElapsed = appState.session.isRunning 
+                ? appState.session.elapsedSecondsBeforePause + Math.floor((Date.now() - new Date(appState.session.startTime).getTime())/1000)
+                : appState.session.elapsedSecondsBeforePause;
+
             logSession({
                 user_id: uid, task_name: st.taskName, start_time: st.startTime,
-                end_time: new Date().toISOString(), duration_seconds: durationToSend
+                end_time: new Date().toISOString(), duration_seconds: finalElapsed
             });
         }
         appState.session.isRunning = false;
         appState.session.mode = 'break';
         appState.session.elapsedSeconds = 0;
+        appState.session.elapsedSecondsBeforePause = 0;
         appState.session.startTime = null; // сброс, установится при старте перерыва
+        appState.session.completionSoundPlayed = false; // Reset for break
         saveCurrentState(); // Сохраняем состояние "ожидания перерыва"
         updateUI();
     }
 
     function startBreak() {
         if (appState.session.isRunning) return;
-        appState.session.isRunning = true;
         appState.session.startTime = new Date().toISOString();
         appState.timerInterval = setInterval(tick, 1000);
         saveCurrentState();
@@ -244,8 +311,10 @@ function initTimerPage() {
         appState.session.isRunning = false;
         appState.session.mode = 'work';
         appState.session.elapsedSeconds = 0;
+        appState.session.elapsedSecondsBeforePause = 0;
         appState.session.startTime = null; 
         appState.session.totalDuration = 25 * 60;
+        appState.session.completionSoundPlayed = false; // Reset for next work session
         clearTimerState(); // Полное завершение цикла
         updateUI();
     }
@@ -255,6 +324,12 @@ function initTimerPage() {
     decreaseBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 300); updateUI(); });
     increaseBtn.addEventListener('click', () => { appState.session.totalDuration = Math.min(180 * 60, appState.session.totalDuration + 300); updateUI(); });
     workPresets.forEach(btn => btn.addEventListener('click', () => { appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; updateUI(); }));
+    decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); });
+    increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.min(60 * 60, appState.session.breakDuration + 60); updateUI(); });
+    
+    // When start break is clicked, it should just start, not toggle. The button text changes via UI update.
+    startBreakBtn.addEventListener('click', startBreak);
+
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? endBreak() : startBreak());
     skipBreakBtn.addEventListener('click', endBreak);
     breakPresets.forEach(btn => {
@@ -270,14 +345,26 @@ function initTimerPage() {
         appState.session.mode = existingState.mode;
         appState.session.totalDuration = existingState.workDuration;
         appState.session.breakDuration = existingState.breakDuration;
+        appState.session.elapsedSecondsBeforePause = existingState.elapsedSecondsBeforePause || 0;
+        appState.session.completionSoundPlayed = existingState.completionSoundPlayed || false;
         appState.session.startTime = existingState.startTime;
         appState.session.isRunning = existingState.isRunning;
         
-        if (appState.session.isRunning) {
-            appState.session.elapsedSeconds = Math.floor((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
+        // If page was reloaded while paused, account for the time it was paused
+        if (!appState.session.isRunning && existingState.pauseStartTime) {
+            const pauseDuration = Date.now() - new Date(existingState.pauseStartTime).getTime();
+            appState.session.startTime = new Date(new Date(appState.session.startTime).getTime() + pauseDuration).toISOString();
+        }
+        
+        if (appState.session.isRunning && appState.session.startTime) {
+            const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+            appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause + elapsedSinceLastStart;
             appState.timerInterval = setInterval(tick, 1000);
-        } else {
-             appState.session.elapsedSeconds = 0;
+        } else if (appState.session.mode === 'break' && !appState.session.isRunning) {
+             appState.session.elapsedSeconds = 0; // Break always resets to 0 when not running
+        }
+        else {
+             appState.session.elapsedSeconds = appState.session.elapsedSecondsBeforePause;
         }
     }
     updateUI();
