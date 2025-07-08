@@ -35,19 +35,49 @@
             <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
         </div>
 
-        <!-- Модальное окно для запуска сессии -->
-        <div class="modal-overlay" id="task-modal" style="display: none;">
+        <!-- Модальное окно для ЗАПУСКА сессии -->
+        <div class="modal-overlay" id="task-modal">
             <div class="modal-content">
-                <h3 class="modal-header">Над чем вы работаете?</h3>
                 <form id="task-form" method="post" action="#">
+                    <h3 class="modal-header">Над чем вы работаете?</h3>
                     <div class="form-group">
                         <input type="text" id="task-name-input" name="task_name" class="form-input" placeholder="Например, 'Разработка новой фичи'" required>
                     </div>
+
+                    <h3 class="modal-header" style="margin-top: 24px;">Где вы?</h3>
+                    <div class="form-group choice-group" id="location-group">
+                        <button type="button" class="choice-btn" data-value="Дом">Дом</button>
+                        <button type="button" class="choice-btn" data-value="Офис">Офис</button>
+                        <button type="button" class="choice-btn" data-value="Другое">Другое</button>
+                    </div>
+
+                    <h3 class="modal-header" style="margin-top: 24px;">Как вы себя чувствуете?</h3>
+                    <div class="form-group choice-group" id="feeling-start-group">
+                        <button type="button" class="choice-btn" data-value="Энергичный">⚡️ Энергично</button>
+                        <button type="button" class="choice-btn" data-value="Сконцентрированный">🎯 В фокусе</button>
+                        <button type="button" class="choice-btn" data-value="Нейтрально">🙂 Нейтрально</button>
+                        <button type="button" class="choice-btn" data-value="Уставший">🥱 Устало</button>
+                    </div>
+
                     <div class="modal-actions">
-                        <button type="button" id="close-modal-btn" class="button button-secondary">Отмена</button>
+                        <button type="button" id="close-task-modal-btn" class="button button-secondary">Отмена</button>
                         <button type="submit" class="button button-primary">Начать сессию</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Модальное окно для ЗАВЕРШЕНИЯ сессии -->
+        <div class="modal-overlay" id="end-session-modal">
+            <div class="modal-content">
+                <h3 class="modal-header">Как вы себя чувствуете сейчас?</h3>
+                <div class="form-group choice-group" id="feeling-end-group">
+                    <button type="button" class="choice-btn" data-value="Энергичный">⚡️ Энергично</button>
+                    <button type="button" class="choice-btn" data-value="Сконцентрированный">🎯 В фокусе</button>
+                    <button type="button" class="choice-btn" data-value="Нейтрально">🙂 Нейтрально</button>
+                    <button type="button" class="choice-btn" data-value="Уставший">🥱 Устало</button>
+                    <button type="button" class="choice-btn" data-value="Истощенный">😵‍💫 Истощенно</button>
+                </div>
             </div>
         </div>
     {% endif %}
