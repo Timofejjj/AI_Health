@@ -27,6 +27,7 @@ except locale.Error:
 worksheet_thoughts = None
 worksheet_analyses = None
 worksheet_timer_logs = None
+worksheet_users = None # Новый лист для пользователей
 gemini_model = None
 
 try:
@@ -43,6 +44,7 @@ try:
     worksheet_thoughts = spreadsheet.worksheet("thoughts")
     worksheet_analyses = spreadsheet.worksheet("analyses")
     worksheet_timer_logs = spreadsheet.worksheet("timer_logs")
+    worksheet_users = spreadsheet.worksheet("users") # Подключаем лист пользователей
     print("✅ Успешное подключение к Google Sheets.")
 except Exception as e:
     print(f"❌ ОШИБКА: Не удалось подключиться к Google Sheets: {e}")
@@ -75,54 +77,35 @@ def get_data_from_sheet(worksheet, user_id):
         return []
 
 def normalize_task_name_with_ai(new_task_name, existing_tasks):
-    """
-    Использует ИИ для сопоставления новой задачи с существующими.
-    Если похожая задача найдена, возвращает её. Иначе возвращает новую.
-    """
     if not gemini_model or not existing_tasks:
         return new_task_name
-
-    # Убираем дубликаты и создаем строку для промпта
     unique_existing_tasks = sorted(list(set(existing_tasks)))
     existing_tasks_str = "\n".join(f"- {task}" for task in unique_existing_tasks)
-    
     prompt = f"""
         Ты — умный ассистент-организатор. Твоя задача — проанализировать название новой задачи и сопоставить его со списком уже существующих.
-        
         **Новая задача:** "{new_task_name}"
-
         **Список существующих задач:**
         {existing_tasks_str}
-
         **Инструкции:**
         1. Внимательно проанализируй семантическое значение новой задачи.
-        2. Если новая задача по смыслу является дубликатом или очень близким синонимом одной из существующих, верни **точное название существующей задачи из списка**. Например, "ML", "машинное обучение" и "Работа над ML проектом" — это одна и та же задача. Если в списке есть "Машинное обучение", а новая задача "ML", ты должен вернуть "Машинное обучение".
+        2. Если новая задача по смыслу является дубликатом или очень близким синонимом одной из существующих, верни **точное название существующей задачи из списка**.
         3. Если задача действительно новая и не похожа ни на одну из существующих, верни **точное название новой задачи**, то есть: "{new_task_name}".
-        
         **Формат ответа:**
-        Твой ответ должен содержать ТОЛЬКО одно название задачи и ничего больше. Без кавычек, без объяснений, без лишних символов.
+        Твой ответ должен содержать ТОЛЬКО одно название задачи и ничего больше.
     """
     try:
         response = gemini_model.generate_content(prompt)
-        # Очищаем ответ от лишних символов, которые может добавить модель
         normalized_name = response.text.strip().replace("*", "").replace("`", "").replace("\"", "")
-        # Проверяем, вернула ли модель что-то из списка, или оставила новое
         if normalized_name in unique_existing_tasks:
              return normalized_name
         else:
-             # Если модель вернула что-то не из списка (например, свою интерпретацию), 
-             # лучше вернуть оригинальное новое название, чтобы избежать путаницы.
-             # Это делает систему более предсказуемой.
-             # Единственное исключение - если модель вернула само новое название.
              if normalized_name == new_task_name:
                  return new_task_name
-             # Если модель сфантазировала что-то свое, лучше вернуть оригинальное название
              print(f"AI Normalization Warning: Model returned '{normalized_name}' which is not in existing tasks. Reverting to original '{new_task_name}'.")
              return new_task_name
-
     except Exception as e:
         print(f"Ошибка нормализации с помощью ИИ: {e}")
-        return new_task_name # В случае ошибки возвращаем исходное название
+        return new_task_name
 
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
@@ -183,8 +166,29 @@ def generate_analysis_report(thoughts, timers):
 def login():
     if request.method == 'POST':
         user_id = request.form.get('user_id')
-        if user_id: return redirect(url_for('dashboard', user_id=user_id))
+        password = request.form.get('password')
+        
+        if not worksheet_users:
+            flash("Сервис пользователей недоступен.", "danger")
+            return render_template('login.html')
+
+        users = worksheet_users.get_all_records()
+        user_found = None
+        for user in users:
+            if str(user.get('user_id')) == user_id:
+                # ВНИМАНИЕ: Хранение паролей в открытом виде небезопасно.
+                # Это сделано для простоты. В реальном проекте используйте хэширование.
+                if str(user.get('password')) == password:
+                    return redirect(url_for('dashboard', user_id=user_id))
+                else:
+                    flash("Неверный ID или пароль.", "danger")
+                    return render_template('login.html')
+        
+        flash("Неверный ID или пароль.", "danger")
+        return render_template('login.html')
+
     return render_template('login.html')
+
 
 @app.route('/dashboard/<user_id>', methods=['GET', 'POST'])
 def dashboard(user_id):
@@ -245,23 +249,11 @@ def log_timer_session():
     try:
         user_id = str(data['user_id'])
         new_task_name = str(data['task_name'])
-
-        # Получаем список уже существующих задач для этого пользователя
         all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
         existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
-
-        # Нормализуем название с помощью ИИ
         normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
-
         duration = int(data['duration_seconds'])
-        row = [
-            user_id,
-            new_task_name,      # task_name_raw
-            normalized_task,    # task_name_normalized
-            data['start_time'],
-            data['end_time'],
-            duration
-        ]
+        row = [user_id, new_task_name, normalized_task, data['start_time'], data['end_time'], duration]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
     except Exception as e:
@@ -276,65 +268,60 @@ def get_dynamics_data(user_id):
         if not records: return jsonify(empty)
         
         df = pd.DataFrame(records)
-        # Ensure start_time is a timezone-aware datetime object, localized to UTC
-        # This handles cases where timezone info might be missing or incorrect
-        df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
-        if df['start_time'].dt.tz is None:
-            df['start_time'] = df['start_time'].dt.tz_localize('UTC')
-        else:
-            df['start_time'] = df['start_time'].dt.tz_convert('UTC')
-
+        df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce', utc=True)
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
         
-        # Используем нормализованное название задачи, если оно есть
+        # --- ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ ---
+        # Конвертируем UTC время в локальное (Московское) для всех расчетов
+        df['start_time_local'] = df['start_time'].dt.tz_convert('Europe/Moscow')
+
         if 'task_name_normalized' in df.columns and df['task_name_normalized'].notna().any():
             if 'task_name_raw' in df.columns:
                  df['task_name_normalized'].fillna(df['task_name_raw'], inplace=True)
             task_col = 'task_name_normalized'
-        elif 'task_name_raw' in df.columns:
-            task_col = 'task_name_raw'
         else:
-            task_col = 'task_name'
+            task_col = 'task_name_raw' if 'task_name_raw' in df.columns else 'task_name'
         
-        work = df.copy() # Используем все данные, т.к. session_type не всегда есть
+        work = df.copy()
         if work.empty: return jsonify(empty)
         
-        # Convert UTC time to a local timezone (e.g., Moscow) for accurate date representation
-        try:
-            # This is more robust as it handles DST
-            work['start_time_local'] = work['start_time'].dt.tz_convert('Europe/Moscow')
-        except Exception:
-            # Fallback for environments where timezone data is not available
-            work['start_time_local'] = work['start_time'] + pd.Timedelta(hours=3)
-        
+        # Календарь: используем локальную дату
         calendars = {t: work[work[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work[task_col].unique()}
+        
+        # Активность по дням: группируем по локальной дате
         work['date'] = work['start_time_local'].dt.date
-        work['hour'] = work['start_time_local'].dt.hour
         work['duration_hours'] = pd.to_numeric(work['duration_seconds'], errors='coerce').fillna(0) / 3600
         
-        first = work['start_time'].min().date()
-        last = datetime.now(timezone.utc).date()
+        first = work['start_time_local'].min().date()
+        last = datetime.now(timezone.utc).astimezone(parser.gettz('Europe/Moscow')).date()
         weeks = max(1, (last - first).days // 7 + 1)
         
         daily = work.groupby('date')['duration_hours'].sum()
         if daily.empty:
-            all_days_index = []
-            daily_data = []
+            all_days_index, daily_data = [], []
         else:
             all_days = pd.date_range(start=daily.index.min(), end=daily.index.max(), freq='D')
             daily = daily.reindex(all_days, fill_value=0)
             all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
             daily_data = daily.tolist()
 
+        # Активность по часам: используем час из локального времени
+        hourly_df = work.copy()
+        hourly_df['hour'] = hourly_df['start_time_local'].dt.hour
+        
+        # Формируем данные для почасового графика: дата, час, длительность
+        hourly_records = hourly_df[['start_time_local', 'hour', 'duration_hours']].rename(columns={'start_time_local': 'date_str'})
+        hourly_records['date_str'] = hourly_records['date_str'].dt.strftime('%Y-%m-%d')
+        
         return jsonify({
             'calendars': calendars,
             'total_weeks': weeks,
             'activity_by_day': {'labels': all_days_index, 'data': daily_data},
-            'activity_by_hour': work.to_dict('records')
+            'activity_by_hour': hourly_records.to_dict('records') # Отправляем данные с локальным часом
         })
     except Exception as e:
-        print(f"Критическая ошибка: {e}")
+        print(f"Критическая ошибка в get_dynamics_data: {e}")
         return jsonify(empty), 500
 
 if __name__ == '__main__':
