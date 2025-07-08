@@ -1,14 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Вход{% endblock %}
 {% block content %}
-<div class="login-container">
-    <form method="post" action="{{ url_for('login') }}">
-        <h1>Дневник мыслей</h1>
-        <div class="input-group">
-            <label for="user_id">Введите ваш ID для входа</label>
-            <input type="text" id="user_id" name="user_id" required>
-        </div>
-        <button type="submit" class="button">Войти</button>
-    </form>
+<div class="login-page-container">
+    <div class="login-container">
+        <form method="post" action="{{ url_for('login') }}">
+            <h1>Дневник мыслей</h1>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="notification {{ category if category != 'message' else 'danger' }}">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <div class="input-group">
+                <label for="user_id">Введите ваш ID</label>
+                <input type="text" id="user_id" name="user_id" required>
+            </div>
+            <div class="input-group">
+                <label for="password">Введите ваш пароль</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="button">Войти</button>
+        </form>
+    </div>
 </div>
 {% endblock %}
