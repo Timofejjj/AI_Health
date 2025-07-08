@@ -144,9 +144,11 @@ function initTimerPage() {
     const uid = document.body.dataset.userId;
     appState.userId = uid;
     const params = new URLSearchParams(location.search);
-    appState.session.taskName = params.get('task') || 'Без названия';
-    appState.session.location = params.get('location');
-    appState.session.feeling_start = params.get('feeling_start');
+    
+    // Новая логика: если сессии нет, не используем данные из URL
+    let taskNameFromUrl = params.get('task') || 'Без названия';
+    let locationFromUrl = params.get('location');
+    let feelingStartFromUrl = params.get('feeling_start');
 
     const taskTitleHeader = document.getElementById('task-title-header');
     const sessionLabel = document.getElementById('session-label');
@@ -157,32 +159,27 @@ function initTimerPage() {
     const breakControls = document.getElementById('break-session-controls');
     const startBreakBtn = document.getElementById('start-break-btn');
     const skipBreakBtn = document.getElementById('skip-break-btn');
-    // Новые кнопки для динамической настройки
+    const forceEndBtn = document.getElementById('force-end-session-btn');
+
     const decreaseWorkBtn = document.getElementById('decrease-work-time-btn');
     const increaseWorkBtn = document.getElementById('increase-work-time-btn');
     const decreaseBreakBtn = document.getElementById('decrease-break-time-btn');
     const increaseBreakBtn = document.getElementById('increase-break-time-btn');
-
-    taskTitleHeader.textContent = appState.session.taskName;
-
+    
     function saveCurrentState() {
-        const stateToSave = {
+        setTimerState({
             isActive: true,
             ...appState.session
-        };
-        setTimerState(stateToSave);
+        });
     }
     
     function tick() {
         if (!appState.session.isRunning) return;
-        
         let currentTotalElapsed = appState.session.elapsedSeconds;
         if (appState.session.startTime) {
             currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
         }
-        
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
-        
         if (currentTotalElapsed >= duration && !appState.session.completionSoundPlayed) {
             playSound();
             appState.session.completionSoundPlayed = true;
@@ -195,11 +192,9 @@ function initTimerPage() {
         if (appState.session.isRunning && appState.session.startTime) {
             currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
         }
-
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
         const remaining = duration - currentTotalElapsed;
         const isOvertime = remaining < 0;
-
         const minutes = Math.floor(Math.abs(remaining) / 60);
         const seconds = Math.abs(remaining) % 60;
         timeDisplay.textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
@@ -217,12 +212,7 @@ function initTimerPage() {
             sessionLabel.textContent = 'ПЕРЕРЫВ';
             startBreakBtn.textContent = appState.session.isRunning ? 'Пауза' : 'Начать перерыв';
             startBreakBtn.classList.toggle('paused', appState.session.isRunning);
-            // Динамическая смена кнопки "Пропустить / Завершить"
-            if (appState.session.isRunning) {
-                skipBreakBtn.textContent = 'Завершить перерыв';
-            } else {
-                skipBreakBtn.textContent = 'Пропустить';
-            }
+            skipBreakBtn.textContent = appState.session.isRunning ? 'Завершить' : 'Пропустить';
         }
         updatePersistentBar();
     }
@@ -259,11 +249,9 @@ function initTimerPage() {
             duration_seconds: finalState.elapsedSeconds,
             feeling_end: feeling_end,
         });
-
         appState.session.mode = 'break';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
-        // Не сбрасываем location и feeling_start, они связаны с завершенной сессией
         saveCurrentState();
         updateUI();
     }
@@ -281,31 +269,7 @@ function initTimerPage() {
         });
     }
 
-    // Новая функция для переключения на работу без редиректа
-    function switchToWorkMode() {
-        pauseTimer();
-        // Логируем перерыв, если он был
-        if (appState.session.elapsedSeconds > 10) {
-            logSession({
-                session_type: 'Перерыв',
-                task_name: 'Перерыв',
-                start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
-                end_time: new Date().toISOString(),
-                duration_seconds: appState.session.elapsedSeconds,
-            });
-        }
-        
-        // Сбрасываем состояние для новой рабочей сессии
-        appState.session.mode = 'work';
-        appState.session.elapsedSeconds = 0;
-        appState.session.completionSoundPlayed = false;
-        // Данные для новой сессии (location, feeling_start) будут установлены при ее старте
-        appState.session.location = null;
-        appState.session.feeling_start = null;
-        saveCurrentState();
-        updateUI();
-    }
-
+    // Завершает перерыв и переводит на главный экран
     function endBreakAndRedirect() {
         pauseTimer();
         if (appState.session.elapsedSeconds > 10) {
@@ -321,19 +285,30 @@ function initTimerPage() {
         window.location.href = `/dashboard/${appState.userId}`;
     }
 
-    // Инициализация обработчиков кнопок
+    // Принудительное завершение всей сессии
+    function forceEndSession() {
+        pauseTimer();
+        const finalState = appState.session;
+        if (finalState.elapsedSeconds > 0) {
+            logSession({
+                session_type: finalState.mode === 'work' ? 'Работа' : 'Перерыв',
+                task_name: finalState.mode === 'work' ? finalState.taskName : 'Перерыв',
+                start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
+                end_time: new Date().toISOString(),
+                duration_seconds: finalState.elapsedSeconds,
+                feeling_end: 'Принудительно завершено', // Указываем статус
+            });
+        }
+        clearTimerState();
+        window.location.href = `/dashboard/${appState.userId}`;
+    }
+
     startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
-    skipBreakBtn.addEventListener('click', () => {
-        if (appState.session.isRunning) {
-            switchToWorkMode(); // Если таймер шел, завершаем перерыв и остаемся на странице
-        } else {
-            endBreakAndRedirect(); // Если таймер стоял, кнопка работает как "Пропустить" и ведет на главную
-        }
-    });
+    skipBreakBtn.addEventListener('click', endBreakAndRedirect);
+    forceEndBtn.addEventListener('click', forceEndSession);
     
-    // Динамическая настройка времени
     decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); updateUI(); });
     increaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration += 60; updateUI(); });
     decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); });
@@ -346,24 +321,27 @@ function initTimerPage() {
         appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
     }));
 
-    // Восстановление состояния
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
-        // Восстанавливаем только нужные поля, чтобы избежать устаревших данных
-        appState.session.mode = existingState.mode;
-        appState.session.elapsedSeconds = existingState.elapsedSeconds;
-        appState.session.totalDuration = existingState.totalDuration;
-        appState.session.breakDuration = existingState.breakDuration;
-        appState.session.completionSoundPlayed = existingState.completionSoundPlayed;
-        // Важно: taskName, location, feeling_start уже взяты из URL, их не перезаписываем
-        
+        Object.assign(appState.session, existingState);
+        // Если мы на странице таймера, данные из URL имеют приоритет
+        appState.session.taskName = taskNameFromUrl;
+        appState.session.location = locationFromUrl;
+        appState.session.feeling_start = feelingStartFromUrl;
+
         if (existingState.isRunning && existingState.startTime) {
-            // Восстанавливаем время, прошедшее с последнего сохранения
             const offlineDuration = (Date.now() - new Date(existingState.startTime).getTime()) / 1000;
             appState.session.elapsedSeconds += offlineDuration;
-            startTimer(); // Сразу запускаем таймер
+            startTimer();
         }
+    } else {
+        // Если нет активной сессии, устанавливаем из URL
+        appState.session.taskName = taskNameFromUrl;
+        appState.session.location = locationFromUrl;
+        appState.session.feeling_start = feelingStartFromUrl;
     }
+    
+    taskTitleHeader.textContent = appState.session.taskName;
     updateUI();
 }
 
