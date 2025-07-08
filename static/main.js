@@ -145,7 +145,6 @@ function initTimerPage() {
     appState.userId = uid;
     const params = new URLSearchParams(location.search);
     
-    // Новая логика: если сессии нет, не используем данные из URL
     let taskNameFromUrl = params.get('task') || 'Без названия';
     let locationFromUrl = params.get('location');
     let feelingStartFromUrl = params.get('feeling_start');
@@ -188,9 +187,9 @@ function initTimerPage() {
     };
 
     function updateUI() {
-        let currentTotalElapsed = appState.session.elapsedSeconds;
+        let currentTotalElapsed = Math.floor(appState.session.elapsedSeconds);
         if (appState.session.isRunning && appState.session.startTime) {
-            currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+            currentTotalElapsed = Math.floor(appState.session.elapsedSeconds + (Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
         }
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
         const remaining = duration - currentTotalElapsed;
@@ -269,8 +268,7 @@ function initTimerPage() {
         });
     }
 
-    // Завершает перерыв и переводит на главный экран
-    function endBreakAndRedirect() {
+    function switchToWorkMode() {
         pauseTimer();
         if (appState.session.elapsedSeconds > 10) {
             logSession({
@@ -281,11 +279,15 @@ function initTimerPage() {
                 duration_seconds: appState.session.elapsedSeconds,
             });
         }
-        clearTimerState();
-        window.location.href = `/dashboard/${appState.userId}`;
+        appState.session.mode = 'work';
+        appState.session.elapsedSeconds = 0;
+        appState.session.completionSoundPlayed = false;
+        // Важно: Не сбрасываем taskName, location, feeling_start,
+        // чтобы можно было продолжить ту же задачу
+        saveCurrentState();
+        updateUI();
     }
 
-    // Принудительное завершение всей сессии
     function forceEndSession() {
         pauseTimer();
         const finalState = appState.session;
@@ -296,7 +298,7 @@ function initTimerPage() {
                 start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: finalState.elapsedSeconds,
-                feeling_end: 'Принудительно завершено', // Указываем статус
+                feeling_end: 'Принудительно завершено',
             });
         }
         clearTimerState();
@@ -306,7 +308,7 @@ function initTimerPage() {
     startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
-    skipBreakBtn.addEventListener('click', endBreakAndRedirect);
+    skipBreakBtn.addEventListener('click', switchToWorkMode); // ИСПРАВЛЕНО
     forceEndBtn.addEventListener('click', forceEndSession);
     
     decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); updateUI(); });
@@ -324,18 +326,16 @@ function initTimerPage() {
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
         Object.assign(appState.session, existingState);
-        // Если мы на странице таймера, данные из URL имеют приоритет
-        appState.session.taskName = taskNameFromUrl;
-        appState.session.location = locationFromUrl;
-        appState.session.feeling_start = feelingStartFromUrl;
+        if (locationFromUrl) appState.session.location = locationFromUrl;
+        if (feelingStartFromUrl) appState.session.feeling_start = feelingStartFromUrl;
+        if (taskNameFromUrl) appState.session.taskName = taskNameFromUrl;
 
         if (existingState.isRunning && existingState.startTime) {
-            const offlineDuration = (Date.now() - new Date(existingState.startTime).getTime()) / 1000;
+            const offlineDuration = Math.floor((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
             appState.session.elapsedSeconds += offlineDuration;
             startTimer();
         }
     } else {
-        // Если нет активной сессии, устанавливаем из URL
         appState.session.taskName = taskNameFromUrl;
         appState.session.location = locationFromUrl;
         appState.session.feeling_start = feelingStartFromUrl;
