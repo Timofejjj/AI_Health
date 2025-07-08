@@ -121,7 +121,6 @@ def get_new_data(records, last_time, time_key):
         ts = rec.get(time_key)
         if not ts: continue
         try:
-            # Преобразуем время записи в aware object перед сравнением
             record_time = parser.parse(ts)
             if record_time.tzinfo is None:
                 record_time = record_time.replace(tzinfo=tz.gettz('Europe/Moscow'))
@@ -266,11 +265,9 @@ def dashboard(user_id):
                 analysis_result = generate_analysis_report(new_thoughts, new_timers)
                 all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
                 
-                # Конвертируем время таймеров в UTC для нахождения максимального
                 local_tz = tz.gettz('Europe/Moscow')
                 for t in new_timers:
                     if t.get('start_time'):
-                        # Предполагаем, что время в таблице - Московское
                         local_time = parser.parse(t['start_time']).replace(tzinfo=local_tz)
                         all_ts_utc.append(local_time.astimezone(timezone.utc))
 
@@ -366,7 +363,7 @@ def get_dynamics_data(user_id):
         if df.empty: 
             return jsonify(empty)
 
-        if 'start_time' not in df.columns or 'duration_seconds' not in df.columns:
+        if 'start_time' not in df.columns or 'duration_seconds' not in df.columns or 'session_type' not in df.columns:
             return jsonify(empty)
 
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
@@ -374,35 +371,33 @@ def get_dynamics_data(user_id):
         if df.empty: 
             return jsonify(empty)
         
-        local_tz = tz.gettz('Europe/Moscow')
-        df['start_time_local'] = df['start_time'].dt.tz_localize(local_tz, ambiguous='infer')
-
-        task_col = 'task_name_normalized' if 'task_name_normalized' in df.columns else 'task_name_raw'
-        if task_col not in df.columns:
-            df[task_col] = "Без названия"
-
-        work_sessions = df[df['session_type'] == 'Работа']
+        # Фильтруем только рабочие сессии для анализа
+        work_sessions = df[df['session_type'] == 'Работа'].copy()
         if work_sessions.empty:
-             return jsonify(empty)
+            return jsonify(empty)
+
+        local_tz = tz.gettz('Europe/Moscow')
+        work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(local_tz, ambiguous='infer')
+
+        task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns else 'task_name_raw'
+        if task_col not in work_sessions.columns:
+            work_sessions.loc[:, task_col] = "Без названия"
 
         calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
         
-        work_sessions['date'] = work_sessions['start_time_local'].dt.date
-        work_sessions['duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
+        work_sessions.loc[:, 'date'] = work_sessions['start_time_local'].dt.date
+        work_sessions.loc[:, 'duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
         
-        first = work_sessions['start_time_local'].min().date()
-        last = datetime.now(local_tz).date()
-        weeks = max(1, (last - first).days // 7 + 1)
+        first_date = work_sessions['start_time_local'].min().date()
+        last_date = datetime.now(local_tz).date()
+
+        weeks = max(1, (last_date - first_date).days // 7 + 1)
         
         daily = work_sessions.groupby('date')['duration_hours'].sum()
-        if daily.empty:
-            all_days_index = []
-            daily_data = []
-        else:
-            all_days = pd.date_range(start=daily.index.min(), end=max(daily.index.max(), last), freq='D')
-            daily = daily.reindex(all_days, fill_value=0)
-            all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
-            daily_data = daily.tolist()
+        all_days_range = pd.date_range(start=first_date, end=max(last_date, first_date), freq='D')
+        daily = daily.reindex(all_days_range, fill_value=0)
+        all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
+        daily_data = daily.tolist()
 
         hourly_output = pd.DataFrame()
         hourly_output['date_str'] = work_sessions['start_time_local'].dt.strftime('%Y-%m-%d')
