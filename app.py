@@ -1,4 +1,3 @@
-
 import os
 import json
 import locale
@@ -14,10 +13,27 @@ from dateutil import parser, tz
 # --- КОНФИГУРАЦИЯ ---
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+MOSCOW_TZ = tz.gettz('Europe/Moscow')
 
 @app.template_filter('markdown')
 def markdown_filter(s):
     return markdown.markdown(s or '', extensions=['fenced_code', 'tables'])
+
+# --- ИСПРАВЛЕНИЕ: Фильтр для корректного отображения времени ---
+@app.template_filter('format_datetime')
+def format_datetime(value):
+    if not value:
+        return ""
+    try:
+        # Парсим UTC время из строки
+        utc_time = parser.isoparse(value)
+        # Конвертируем в московское время
+        local_time = utc_time.astimezone(MOSCOW_TZ)
+        # Форматируем для вывода
+        return local_time.strftime('%Y-%m-%d %H:%M:%S')
+    except (ValueError, TypeError):
+        # Если формат некорректен, возвращаем как есть
+        return value
 
 try:
     locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
@@ -117,23 +133,23 @@ def get_last_analysis_timestamp_utc(analyses):
 def get_new_data(records, last_time_utc, time_key, is_utc):
     if not records: return []
     if last_time_utc is None: return records
-    
-    new_records = []
-    local_tz = tz.gettz('Europe/Moscow')
 
+    new_records = []
     for rec in records:
         ts_str = rec.get(time_key)
         if not ts_str: continue
-        
+
         try:
             record_time_utc = None
             if is_utc:
                 record_time_utc = parser.isoparse(ts_str)
             else:
+                # ИСПРАВЛЕНИЕ: Правильная работа с часовыми поясами для dateutil
                 naive_time = parser.parse(ts_str)
-                local_time = local_tz.localize(naive_time, is_dst=None)
+                # Указываем, что это время в Москве, а затем конвертируем в UTC для сравнения
+                local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                 record_time_utc = local_time.astimezone(timezone.utc)
-            
+
             if record_time_utc > last_time_utc:
                 new_records.append(rec)
         except Exception as e:
@@ -142,39 +158,33 @@ def get_new_data(records, last_time_utc, time_key, is_utc):
 
 def generate_analysis_report(thoughts, timers):
     if not gemini_model: return "Модель анализа недоступна."
-    
-    local_tz = tz.gettz('Europe/Moscow')
 
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Определение date_range_str ---
     all_dates = []
     if thoughts:
         for t in thoughts:
             if t.get('timestamp'):
-                try:
-                    all_dates.append(parser.isoparse(t['timestamp']))
-                except (parser.ParserError, TypeError):
-                    pass # Игнорируем невалидные метки
+                try: all_dates.append(parser.isoparse(t['timestamp']))
+                except (parser.ParserError, TypeError): pass
     if timers:
         for t in timers:
             if t.get('start_time'):
                 try:
+                    # ИСПРАВЛЕНИЕ: Правильная работа с часовыми поясами для dateutil
                     naive_time = parser.parse(t['start_time'])
-                    local_time = local_tz.localize(naive_time, is_dst=None)
+                    local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                     all_dates.append(local_time.astimezone(timezone.utc))
-                except (parser.ParserError, TypeError):
-                    pass # Игнорируем невалидные метки
+                except (parser.ParserError, TypeError): pass
 
     date_range_str = "текущий период"
     if all_dates:
-        min_date = min(all_dates).astimezone(local_tz)
-        max_date = max(all_dates).astimezone(local_tz)
+        min_date = min(all_dates).astimezone(MOSCOW_TZ)
+        max_date = max(all_dates).astimezone(MOSCOW_TZ)
         if min_date.date() == max_date.date():
             date_range_str = min_date.strftime('%d %B %Y г.')
         else:
             date_range_str = f"период с {min_date.strftime('%d %B')} по {max_date.strftime('%d %B %Y г.')}"
-    # --- КОНЕЦ ИЗМЕНЕНИЯ ---
 
-    thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(local_tz).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
+    thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
     
     timer_text = "Нет данных об активности."
     if timers:
@@ -185,81 +195,67 @@ def generate_analysis_report(thoughts, timers):
         sessions_summary = []
         for index, row in df.iterrows():
             session_info = f"- Задача: '{row.get('task_name_normalized', 'N/A')}', Длительность: {row['duration_minutes']} мин"
-            if pd.notna(row.get('location')) and row.get('location') != '':
-                session_info += f", Место: {row['location']}"
-            if pd.notna(row.get('feeling_start')) and row.get('feeling_start') != '':
-                session_info += f", Начало: {row['feeling_start']}"
-            if pd.notna(row.get('feeling_end')) and row.get('feeling_end') != '':
-                session_info += f", Конец: {row['feeling_end']}"
+            if pd.notna(row.get('location')) and row.get('location') != '': session_info += f", Место: {row['location']}"
+            if pd.notna(row.get('feeling_start')) and row.get('feeling_start') != '': session_info += f", Начало: {row['feeling_start']}"
+            if pd.notna(row.get('feeling_end')) and row.get('feeling_end') != '': session_info += f", Конец: {row['feeling_end']}"
             sessions_summary.append(session_info)
         timer_text = "\n".join(sessions_summary)
 
     prompt = f"""
-# РОЛЬ И ЗАДАЧА  
-Ты — мой когнитивный аналитик и стратегический коуч. Твоя главная задача — провести многофакторный анализ мыслей ({thoughts_text}) и рабочих сессий ({timer_text}) за все дни. Цель — выявить скрытые причинно-следственные связи, спрогнозировать тренды и дать практические рекомендации.
+# РОЛЬ И ЗАДАЧА
+Ты — мой когнитивный аналитик и стратегический коуч. Твоя главная задача — провести многофакторный анализ моих мыслей и рабочих сессий за указанный период. Цель — выявить скрытые причинно-следственные связи, спрогнозировать тренды и дать практические рекомендации.
 
-# ВХОДНЫЕ ДАННЫЕ  
-- Полный список мыслей: {thoughts_text}  
-- История рабочих сессий (таймеров): {timer_text}  
+# ВХОДНЫЕ ДАННЫЕ
+- Анализируемый период: {date_range_str}
+- Список мыслей с метками времени (в формате ГГГГ-ММ-ДД ЧЧ:ММ):
+{thoughts_text}
+- История рабочих сессий (таймеров):
+{timer_text}
 
-# КЛЮЧЕВЫЕ ДИРЕКТИВЫ  
+# КЛЮЧЕВЫЕ ДИРЕКТИВЫ
 
-1.  Выявление скрытых связей и паттернов:
-    *   Анализируй, как темы в начале периода влияют на мысли в конце
-    *   Ищи причинно-следственные связи между проблемами и идеями
-    *   Отмечай повторяющиеся слова/метафоры
-    *   1.3 Анализ влияния рабочих сессий:
-        - Как продолжительность/частота сессий коррелирует с:  
-          • Эмоциональным состоянием (тревога ⇄ продуктивность)  
-          • Качеством идей (озарения после глубокой работы vs. выгорание)
-    *   1.4 Выявление циклов:  
-        - Существуют ли паттерны: проблема → рабочая сессия → новое убеждение?  
-        - Пример: "Тревога о deadline → марафонская сессия → убеждение 'Я должен работать больше'"
+1.  **Выявление скрытых связей и паттернов**:
+    *   Проанализируй, как темы в начале периода влияют на мысли в конце.
+    *   Найди причинно-следственные связи между проблемами и идеями.
+    *   Как продолжительность/частота сессий коррелирует с эмоциональным состоянием (например, тревога после долгих сессий) или качеством идей?
+    *   Выяви циклы поведения, если они есть (например, "Тревога о дедлайне → марафонская сессия → убеждение 'Я должен работать больше'").
 
-2.  Структурный разбор мыслей:  
-    *(Без изменений, но добавляй метки времени если есть в данных)*
+2.  **Анализ направленности мышления**:
+    *   Определи основной вектор мышления: решение проблем, генерация идей, рефлексия, тревога и т.д.
+    *   Оцени продуктивность сессий на основе данных: высокая, низкая, нестабильная?
 
-3.  Анализ направленности мышления:  
-    *(Дополни критерий: "продуктивный/непродуктивный" на основе данных таймеров)*
+3.  **ПРОГНОЗИРУЮЩИЙ КОУЧИНГ (ОСНОВНОЙ ФОКУС)**:
+    *   **Конкретные советы**: Для каждой выявленной проблемы дай 1-2 практических решения с привязкой к рабочим сессиям. *Пример: "При тревоге X попробуй внедрить 3 сессии по 25 минут с 5-минутными перерывами, чтобы снизить когнитивную нагрузку."*
+    *   **Фокус внимания**: Спрогнозируй 2-3 ключевые темы или задачи, на которых мне стоит сфокусироваться на следующей неделе.
+    *   **Прогноз развития**: Опиши 3 сценария на ближайшие 1-2 недели:
+        -   **📈 Оптимистичный**: Что произойдет, если я последую твоим советам и усилю полезные паттерны?
+        -   **➡️ Нейтральный**: Что будет, если я продолжу действовать как сейчас?
+        -   **📉 Пессимистичный**: Какие риски возникнут, если я буду игнорировать выявленные проблемы?
+    *   **Идеальный график работы**: На основе анализа, какой график сессий (длительность, частота) был наиболее эффективным для меня? Дай рекомендацию.
 
-4.  ПРОГНОЗИРУЮЩИЙ КОУЧИНГ (ОСНОВНОЙ ФОКУС):
-    *   Советы: Для каждой проблемы → 1-2 решения с привязкой к расписанию сессий  
-        *Пример: "При тревоге X — внедрить технику Pomodoro (4 сессии по 25 мин)"*
-    *   Фокус внимания: Спрогнозируй 3 ключевые темы на следующую неделю
-    *   Мониторинг: Контрольные точки для проверки прогноза (напр.: "Если после 3 длинных сессий подряд появятся мысли Y — это сигнал")
-    *   Прогноз: 3 сценария развития на 1-2 недели:  
-        - Оптимистичный (если усилить полезные паттерны)  
-        - Нейтральный (без изменений)  
-        - Пессимистичный (при усугублении рисков)  
-    *   4.5 Анализ эффективности сессий:  
-        - Какие типы сессий генерируют прорывные идеи?  
-        - Рекомендация по идеальному расписанию на основе исторических данных
-
-# СТРУКТУРА ОТВЕТА  
-
+# СТРУКТУРА ОТВЕТА (используй Markdown)
 
 ### Отчет по когнитивному анализу за {date_range_str}
-3. Скрытые связи и паттерны:
-   *   Мысль ⇄ Мысль: [Связь 1]  
-   *   Сессия ⇄ Эмоция: [Связь 2]  
-       *Пример: "Сессии >3ч → учащение самокритики (+27%)"*
-   *   3.3 Циклы поведения:  
-       - [Выявленный цикл, напр.: "Избегание проблемы → авральные сессии → чувство вины"]
 
-4. Направленность мышления:  
-   [Вектор] + Продуктивность сессий: [Высокая/Низкая/Нестабильная]
+**1. Скрытые связи и паттерны**
+*   **Мысль ⇄ Мысль**: [Твоя находка о связи между мыслями]
+*   **Сессия ⇄ Эмоция**: [Твоя находка о влиянии работы на состояние]
+*   **Циклы поведения**: [Описание выявленного цикла или его отсутствия]
 
-5. Рекомендации, предупреждения и прогноз:
-   *   Советы: С привязкой к таймерам  
-       *Пример: "Проблема Y: запускать N-мин сессии с фокусом на Z"*
-   *   Фокус внимания: Конкретные триггеры для мониторинга  
-       *Пример: "Отслеживать мысли после вечерних сессий"*
-   *   Прогноз: 3 сценария  
-       - 📈 Оптимистичный: [Если сделать A]  
-       - ➡️ Нейтральный: [Текущий путь]  
-       - 📉 Пессимистичный: [Если игнорировать B]  
-   *   5.5 Идеальный график работы:  
-       [Рекомендуемое расписание сессий на основе паттернов]
+**2. Направленность мышления и продуктивность**
+*   **Основной вектор**: [Направленность мышления]
+*   **Продуктивность сессий**: [Оценка продуктивности]
+
+**3. Рекомендации, предупреждения и прогноз**
+*   **Практические советы**:
+    *   *Проблема 1*: [Совет 1]
+    *   *Проблема 2*: [Совет 2]
+*   **Фокус на следующую неделю**: [Ключевые темы/задачи]
+*   **Прогноз развития**:
+    *   📈 **Оптимистичный**: [Описание]
+    *   ➡️ **Нейтральный**: [Описание]
+    *   📉 **Пессимистичный**: [Описание]
+*   **Рекомендуемый график работы**: [Твоя рекомендация по расписанию]
 """
     try:
         resp = gemini_model.generate_content(prompt)
@@ -310,10 +306,9 @@ def dashboard(user_id):
                     
                     all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
                     
-                    local_tz = tz.gettz('Europe/Moscow')
                     for t in new_timers:
                         if t.get('start_time'):
-                            local_time = local_tz.localize(parser.parse(t['start_time']), is_dst=None)
+                            local_time = parser.parse(t['start_time']).replace(tzinfo=MOSCOW_TZ)
                             all_ts_utc.append(local_time.astimezone(timezone.utc))
 
                     if all_ts_utc:
@@ -330,6 +325,7 @@ def dashboard(user_id):
         else:
             thought = request.form.get('thought')
             if thought:
+                # Сохранение мысли происходит корректно в UTC
                 worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
                 flash("Мысль сохранена!", "success")
             return redirect(url_for('dashboard', user_id=user_id))
@@ -371,11 +367,10 @@ def log_timer_session():
         user_id = str(data['user_id'])
         new_task_name = str(data['task_name'])
         
-        local_tz = tz.gettz('Europe/Moscow')
         start_time_utc = parser.isoparse(data['start_time'])
         end_time_utc = parser.isoparse(data['end_time'])
-        start_time_local = start_time_utc.astimezone(local_tz)
-        end_time_local = end_time_utc.astimezone(local_tz)
+        start_time_local = start_time_utc.astimezone(MOSCOW_TZ)
+        end_time_local = end_time_utc.astimezone(MOSCOW_TZ)
         start_time_str = start_time_local.strftime('%Y-%m-%d %H:%M:%S')
         end_time_str = end_time_local.strftime('%Y-%m-%d %H:%M:%S')
         
@@ -388,16 +383,9 @@ def log_timer_session():
         duration = int(data['duration_seconds'])
 
         row = [
-            user_id,
-            new_task_name,
-            normalized_task,
-            data.get('session_type', ''),
-            data.get('location', ''),
-            data.get('feeling_start', ''),
-            data.get('feeling_end', ''),
-            start_time_str,
-            end_time_str,
-            duration
+            user_id, new_task_name, normalized_task, data.get('session_type', ''),
+            data.get('location', ''), data.get('feeling_start', ''), data.get('feeling_end', ''),
+            start_time_str, end_time_str, duration
         ]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
@@ -410,12 +398,10 @@ def get_dynamics_data(user_id):
     try:
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
         empty = {'calendars': {}, 'total_weeks': 1, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
-        if not records: 
-            return jsonify(empty)
+        if not records: return jsonify(empty)
         
         df = pd.DataFrame(records)
-        if df.empty: 
-            return jsonify(empty)
+        if df.empty: return jsonify(empty)
 
         required_cols = ['start_time', 'duration_seconds', 'session_type']
         if not all(col in df.columns for col in required_cols):
@@ -424,19 +410,15 @@ def get_dynamics_data(user_id):
 
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df.dropna(subset=['start_time'], inplace=True)
-        if df.empty: 
-            return jsonify(empty)
+        if df.empty: return jsonify(empty)
         
         work_sessions = df[df['session_type'] == 'Работа'].copy()
-        if work_sessions.empty:
-            return jsonify(empty)
+        if work_sessions.empty: return jsonify(empty)
 
-        local_tz = tz.gettz('Europe/Moscow')
-        work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(local_tz, ambiguous='infer')
+        work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer')
 
         task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns else 'task_name_raw'
-        if task_col not in work_sessions.columns:
-            work_sessions.loc[:, task_col] = "Без названия"
+        if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
 
         calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
         
@@ -444,7 +426,7 @@ def get_dynamics_data(user_id):
         work_sessions.loc[:, 'duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
         
         first_date = work_sessions['start_time_local'].min().date()
-        last_date = datetime.now(local_tz).date()
+        last_date = datetime.now(MOSCOW_TZ).date()
 
         weeks = max(1, (last_date - first_date).days // 7 + 1)
         
