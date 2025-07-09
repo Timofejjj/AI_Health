@@ -1,4 +1,3 @@
---- START OF FILE app.py ---
 
 import os
 import json
