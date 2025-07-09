@@ -87,22 +87,19 @@ def get_data_from_sheet(worksheet, user_id):
         return []
 
 def normalize_task_name_with_ai(new_task_name, existing_tasks):
-    if not gemini_model or not existing_tasks:
-        return new_task_name
+    if not gemini_model or not existing_tasks: return new_task_name
     unique_existing_tasks = sorted(list(set(existing_tasks)))
     existing_tasks_str = "\n".join(f"- {task}" for task in unique_existing_tasks)
-    prompt = f"""
-        Ты — умный ассистент-организатор. Твоя задача — проанализировать название новой задачи и сопоставить его со списком уже существующих.
-        **Новая задача:** "{new_task_name}"
-        **Список существующих задач:**
-        {existing_tasks_str}
-        **Инструкции:**
-        1. Внимательно проанализируй семантическое значение новой задачи.
-        2. Если новая задача по смыслу является дубликатом или очень близким синонимом одной из существующих, верни **точное название существующей задачи из списка**.
-        3. Если задача действительно новая и не похожа ни на одну из существующих, верни **точное название новой задачи**, то есть: "{new_task_name}".
-        **Формат ответа:**
-        Твой ответ должен содержать ТОЛЬКО одно название задачи и ничего больше.
-    """
+    prompt = f"""Ты — умный ассистент-организатор. Твоя задача — проанализировать название новой задачи и сопоставить его со списком уже существующих.
+**Новая задача:** "{new_task_name}"
+**Список существующих задач:**
+{existing_tasks_str}
+**Инструкции:**
+1. Внимательно проанализируй семантическое значение новой задачи.
+2. Если новая задача по смыслу является дубликатом или очень близким синонимом одной из существующих, верни **точное название существующей задачи из списка**.
+3. Если задача действительно новая и не похожа ни на одну из существующих, верни **точное название новой задачи**, то есть: "{new_task_name}".
+**Формат ответа:**
+Твой ответ должен содержать ТОЛЬКО одно название задачи и ничего больше."""
     try:
         response = gemini_model.generate_content(prompt)
         normalized_name = response.text.strip().replace("*", "").replace("`", "").replace("\"", "")
@@ -160,10 +157,8 @@ def generate_analysis_report(thoughts, timers):
     if all_dates:
         min_date = min(all_dates).astimezone(MOSCOW_TZ)
         max_date = max(all_dates).astimezone(MOSCOW_TZ)
-        if min_date.date() == max_date.date():
-            date_range_str = min_date.strftime('%d %B %Y г.')
-        else:
-            date_range_str = f"период с {min_date.strftime('%d %B')} по {max_date.strftime('%d %B %Y г.')}"
+        if min_date.date() == max_date.date(): date_range_str = min_date.strftime('%d %B %Y г.')
+        else: date_range_str = f"период с {min_date.strftime('%d %B')} по {max_date.strftime('%d %B %Y г.')}"
     thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
     timer_text = "Нет данных об активности."
     if timers:
@@ -253,14 +248,9 @@ def login():
             return render_template('login.html')
         users = worksheet_users.get_all_records()
         for user in users:
-            if str(user.get('user_id')) == user_id:
-                if str(user.get('password')) == password:
-                    return redirect(url_for('dashboard', user_id=user_id))
-                else:
-                    flash("Неверный ID или пароль.", "danger")
-                    return render_template('login.html')
+            if str(user.get('user_id')) == user_id and str(user.get('password')) == password:
+                return redirect(url_for('dashboard', user_id=user_id))
         flash("Неверный ID или пароль.", "danger")
-        return render_template('login.html')
     return render_template('login.html')
 
 @app.route('/dashboard/<user_id>', methods=['GET', 'POST'])
@@ -327,24 +317,18 @@ def dynamics(user_id):
 def log_timer_session():
     if not request.is_json: return jsonify({'status': 'error', 'message': 'Invalid content type'}), 400
     data = request.json
-    
     required = ['user_id', 'task_name', 'start_time', 'end_time', 'duration_seconds', 'session_type']
-    if not all(k in data for k in required): 
-        return jsonify({'status': 'error', 'message': f'Missing fields. Required: {required}'}), 400
-    
+    if not all(k in data for k in required): return jsonify({'status': 'error', 'message': f'Missing fields. Required: {required}'}), 400
     try:
         user_id = str(data['user_id'])
         session_type = data.get('session_type', '')
         new_task_name = str(data['task_name'])
-        
         start_time_utc = parser.isoparse(data['start_time'])
         end_time_utc = parser.isoparse(data['end_time'])
         start_time_local = start_time_utc.astimezone(MOSCOW_TZ)
         end_time_local = end_time_utc.astimezone(MOSCOW_TZ)
         start_time_str = start_time_local.strftime('%Y-%m-%d %H:%M:%S')
         end_time_str = end_time_local.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Упрощенная логика для нормализации имени задачи
         normalized_task = new_task_name
         if session_type == 'Работа':
             all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
@@ -352,17 +336,9 @@ def log_timer_session():
             normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
         elif session_type == 'Перерыв':
             normalized_task = 'Перерыв'
-
         duration = int(data['duration_seconds'])
-
-        # feeling_start будет None для перерывов, и это нормально
         feeling_start = data.get('feeling_start')
-
-        row = [
-            user_id, new_task_name, normalized_task, session_type,
-            data.get('location', ''), feeling_start, data.get('feeling_end', ''),
-            start_time_str, end_time_str, duration
-        ]
+        row = [user_id, new_task_name, normalized_task, session_type, data.get('location', ''), feeling_start, data.get('feeling_end', ''), start_time_str, end_time_str, duration]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
     except Exception as e:
@@ -373,43 +349,59 @@ def log_timer_session():
 def get_dynamics_data(user_id):
     try:
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
-        empty = {'calendars': {}, 'total_weeks': 1, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
-        if not records: return jsonify(empty)
+        empty_response = {'calendars': {}, 'total_weeks': 1, 'activity_by_day': {'labels': [], 'data': []}, 'work_sessions_list': []}
+        if not records: return jsonify(empty_response)
+        
         df = pd.DataFrame(records)
-        if df.empty: return jsonify(empty)
-        required_cols = ['start_time', 'duration_seconds', 'session_type']
+        if df.empty: return jsonify(empty_response)
+
+        required_cols = ['start_time', 'end_time', 'duration_seconds', 'session_type']
         if not all(col in df.columns for col in required_cols):
             print(f"Ошибка: отсутствуют необходимые колонки в Google Sheet. Требуются: {required_cols}")
-            return jsonify(empty)
+            return jsonify(empty_response)
+
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
-        df.dropna(subset=['start_time'], inplace=True)
-        if df.empty: return jsonify(empty)
+        df['end_time'] = pd.to_datetime(df['end_time'], errors='coerce')
+        df.dropna(subset=['start_time', 'end_time'], inplace=True)
+        if df.empty: return jsonify(empty_response)
+        
         work_sessions = df[df['session_type'] == 'Работа'].copy()
-        if work_sessions.empty: return jsonify(empty)
+        if work_sessions.empty: return jsonify(empty_response)
+
         work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
+        work_sessions.loc[:, 'end_time_local'] = work_sessions['end_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
+        
         task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns and not work_sessions['task_name_normalized'].isnull().all() else 'task_name_raw'
         if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
         work_sessions[task_col] = work_sessions[task_col].fillna('Без названия')
+
         calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
+        
         work_sessions.loc[:, 'date'] = work_sessions['start_time_local'].dt.date
         work_sessions.loc[:, 'duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
+        
         first_date = work_sessions['start_time_local'].min().date()
         last_date = datetime.now(MOSCOW_TZ).date()
         weeks = max(1, (last_date - first_date).days // 7 + 1)
+        
         daily = work_sessions.groupby('date')['duration_hours'].sum()
         all_days_range = pd.date_range(start=first_date, end=max(last_date, first_date), freq='D')
         daily = daily.reindex(all_days_range, fill_value=0)
         all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
         daily_data = daily.tolist()
-        hourly_output = pd.DataFrame()
-        hourly_output['date_str'] = work_sessions['start_time_local'].dt.strftime('%Y-%m-%d')
-        hourly_output['hour'] = work_sessions['start_time_local'].dt.hour
-        hourly_output['duration_hours'] = work_sessions['duration_hours']
+
+        work_sessions['start_time'] = work_sessions['start_time_local'].astype(str)
+        work_sessions['end_time'] = work_sessions['end_time_local'].astype(str)
+
+        work_sessions_list = work_sessions[[task_col, 'start_time', 'end_time']].rename(columns={
+            task_col: 'task_name'
+        }).to_dict('records')
+
         return jsonify({
             'calendars': calendars,
             'total_weeks': weeks,
             'activity_by_day': {'labels': all_days_index, 'data': daily_data},
-            'activity_by_hour': hourly_output.to_dict('records')
+            'work_sessions_list': work_sessions_list
         })
     except Exception as e:
         print(f"Критическая ошибка в get_dynamics_data: {e}")
