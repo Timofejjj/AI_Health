@@ -35,7 +35,7 @@
             <a href="{{ url_for('dynamics', user_id=user_id) }}" class="fab-menu-item">Перейти к отчёту</a>
         </div>
 
-        <!-- Модальное окно для ЗАПУСКА сессии -->
+        <!-- Модальное окно для ЗАПУСКА новой сессии -->
         <div class="modal-overlay" id="task-modal">
             <div class="modal-content">
                 <form id="task-form" method="post" action="#">
@@ -64,6 +64,23 @@
                         <button type="submit" class="button button-primary">Начать сессию</button>
                     </div>
                 </form>
+            </div>
+        </div>
+        
+        <!-- Новое модальное окно для ВОЗОБНОВЛЕНИЯ сессии -->
+        <div class="modal-overlay" id="start-session-modal">
+            <div class="modal-content">
+                <h3 class="modal-header">Как вы себя чувствуете перед началом работы?</h3>
+                <div class="form-group choice-group" id="feeling-start-group-resumed">
+                    <button type="button" class="choice-btn" data-value="Энергичный">⚡️ Энергично</button>
+                    <button type="button" class="choice-btn" data-value="Сконцентрированный">🎯 В фокусе</button>
+                    <button type="button" class="choice-btn" data-value="Нейтрально">🙂 Нейтрально</button>
+                    <button type="button" class="choice-btn" data-value="Уставший">🥱 Устало</button>
+                </div>
+                 <div class="modal-actions">
+                    <button type="button" id="close-start-session-modal-btn" class="button button-secondary">Отмена</button>
+                    <button type="button" id="start-resumed-session-btn" class="button button-primary">Продолжить</button>
+                </div>
             </div>
         </div>
 
