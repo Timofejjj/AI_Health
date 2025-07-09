@@ -146,7 +146,7 @@ function initModalClose() {
 function initTimerPage() {
     const params = new URLSearchParams(location.search);
     
-    let taskNameFromUrl = params.get('task') || 'Без названия';
+    let taskNameFromUrl = params.get('task');
     let locationFromUrl = params.get('location');
     let feelingStartFromUrl = params.get('feeling_start');
 
@@ -304,6 +304,7 @@ function initTimerPage() {
         window.location.href = `/dashboard/${appState.userId}`;
     }
 
+    // Инициализация обработчиков кнопок
     startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
@@ -322,16 +323,17 @@ function initTimerPage() {
         appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
     }));
 
+    // Логика восстановления состояния
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
         // Загружаем сохраненное состояние
         Object.assign(appState.session, existingState);
         
-        // Если мы перешли на страницу таймера, данные из URL имеют приоритет
-        if(taskNameFromUrl !== 'Без названия') {
-             appState.session.taskName = taskNameFromUrl;
-             appState.session.location = locationFromUrl;
-             appState.session.feeling_start = feelingStartFromUrl;
+        // Если мы только что перешли со страницы создания сессии, данные из URL имеют приоритет
+        if (taskNameFromUrl) {
+            appState.session.taskName = taskNameFromUrl;
+            appState.session.location = locationFromUrl;
+            appState.session.feeling_start = feelingStartFromUrl;
         }
 
         // Если таймер был запущен, когда мы ушли со страницы,
@@ -339,14 +341,14 @@ function initTimerPage() {
         if (existingState.isRunning && existingState.startTime) {
             const offlineDuration = (Date.now() - new Date(existingState.startTime).getTime()) / 1000;
             appState.session.elapsedSeconds += offlineDuration;
-            // Сразу же запускаем таймер, чтобы он продолжал идти
-            startTimer(); 
+            startTimer(); // Сразу запускаем таймер
         }
-    } else {
-        // Если нет активной сессии, устанавливаем из URL
+    } else if (taskNameFromUrl) {
+        // Если нет активной сессии, но есть данные в URL - это новая сессия.
         appState.session.taskName = taskNameFromUrl;
         appState.session.location = locationFromUrl;
         appState.session.feeling_start = feelingStartFromUrl;
+        saveCurrentState(); // Сразу сохраняем новую сессию
     }
     
     taskTitleHeader.textContent = appState.session.taskName;
@@ -384,7 +386,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (appState.userId) {
                 hideModals();
-                // При старте новой сессии сбрасываем старый state
                 clearTimerState();
                 const params = new URLSearchParams({ task: taskName, location: location, feeling_start: feeling_start });
                 window.location.href = `/timer/${appState.userId}?${params.toString()}`;
@@ -394,6 +395,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (document.querySelector('.timer-page')) initTimerPage();
     if (document.querySelector('.dynamics-page')) {
-        // initDynamicsPage(); // Если есть страница динамики, ее тоже нужно будет инициализировать
+        // Здесь должна быть функция initDynamicsPage(), если она вам нужна
     }
 });
