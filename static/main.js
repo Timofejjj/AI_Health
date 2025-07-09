@@ -1,4 +1,3 @@
-
 // =======================================================
 //        ГЛОБАЛЬНОЕ СОСТОЯНИЕ И UI
 // =======================================================
@@ -7,7 +6,7 @@ const appState = {
     userId: null,
     session: {
         mode: 'work', // 'work' | 'break'
-        startTime: null, 
+        startTime: null,
         isRunning: false,
         taskName: null,
         elapsedSeconds: 0,
@@ -47,17 +46,17 @@ function updatePersistentBar() {
         clearInterval(bar.intervalId);
         bar.intervalId = null;
     }
-    
-    const currentUserId = appState.userId; 
+
+    const currentUserId = appState.userId;
     if (!currentUserId) return;
 
     if (st && st.isActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
-        
+
         const href = `/timer/${currentUserId}?task=${encodeURIComponent(st.taskName || '')}`;
         bar.querySelector('#return-to-timer-btn').href = href;
-        
+
         const updateBarTime = () => {
             const duration = st.mode === 'work' ? (st.totalDuration || 25*60) : (st.breakDuration || 10*60);
             let currentElapsed = st.elapsedSeconds || 0;
@@ -71,7 +70,7 @@ function updatePersistentBar() {
             const seconds = displaySeconds % 60;
             bar.querySelector('.time-display').textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         };
-        
+
         updateBarTime();
         bar.intervalId = setInterval(updateBarTime, 1000);
 
@@ -103,7 +102,7 @@ function logSession(data) {
         task_name: appState.session.taskName || 'N/A',
         location: appState.session.location,
         feeling_start: appState.session.feeling_start,
-        ...data 
+        ...data
     };
 
     fetch('/api/log_session', {
@@ -146,7 +145,7 @@ function initModalClose() {
 
 function initTimerPage() {
     const params = new URLSearchParams(location.search);
-    
+
     let taskNameFromUrl = params.get('task');
     let locationFromUrl = params.get('location');
     let feelingStartFromUrl = params.get('feeling_start');
@@ -166,14 +165,14 @@ function initTimerPage() {
     const increaseWorkBtn = document.getElementById('increase-work-time-btn');
     const decreaseBreakBtn = document.getElementById('decrease-break-time-btn');
     const increaseBreakBtn = document.getElementById('increase-break-time-btn');
-    
+
     function saveCurrentState() {
         setTimerState({
             isActive: true,
             ...appState.session
         });
     }
-    
+
     function tick() {
         if (!appState.session.isRunning) return;
         let currentTotalElapsed = appState.session.elapsedSeconds;
@@ -217,7 +216,7 @@ function initTimerPage() {
         }
         updatePersistentBar();
     }
-    
+
     function startTimer() {
         if (appState.session.isRunning) return;
         appState.session.isRunning = true;
@@ -256,7 +255,7 @@ function initTimerPage() {
         saveCurrentState();
         updateUI();
     }
-    
+
     function endWorkSessionWithPrompt() {
         pauseTimer();
         showModal('end-session-modal');
@@ -305,18 +304,17 @@ function initTimerPage() {
         window.location.href = `/dashboard/${appState.userId}`;
     }
 
-    // Инициализация обработчиков кнопок
     startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
     startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
     skipBreakBtn.addEventListener('click', switchToWorkMode);
     forceEndBtn.addEventListener('click', forceEndSession);
-    
+
     decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); updateUI(); });
     increaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration += 60; updateUI(); });
     decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); });
     increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration += 60; updateUI(); });
-    
+
     document.querySelectorAll('.time-preset-btn').forEach(btn => btn.addEventListener('click', () => {
         appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
     }));
@@ -324,42 +322,211 @@ function initTimerPage() {
         appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
     }));
 
-    // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-    // Логика восстановления состояния
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
-        // Загружаем сохраненное состояние
         Object.assign(appState.session, existingState);
-        
-        // Если мы только что перешли со страницы создания сессии, данные из URL имеют приоритет
         if (taskNameFromUrl) {
             appState.session.taskName = taskNameFromUrl;
             appState.session.location = locationFromUrl;
             appState.session.feeling_start = feelingStartFromUrl;
         }
-
-        // Если таймер был запущен, когда мы ушли со страницы,
-        // просто перезапускаем интервал. Состояние (startTime, elapsedSeconds)
-        // уже корректно загружено из localStorage.
         if (appState.session.isRunning) {
             if (appState.timerInterval) clearInterval(appState.timerInterval);
             appState.timerInterval = setInterval(tick, 1000);
         }
     } else if (taskNameFromUrl) {
-        // Если нет активной сессии, но есть данные в URL - это новая сессия.
         appState.session.taskName = taskNameFromUrl;
         appState.session.location = locationFromUrl;
         appState.session.feeling_start = feelingStartFromUrl;
-        saveCurrentState(); // Сразу сохраняем новую сессию
+        saveCurrentState();
     }
-    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
-    
+
     taskTitleHeader.textContent = appState.session.taskName;
     updateUI();
 }
 
+
+// =======================================================
+//        НОВЫЙ КОД ДЛЯ СТРАНИЦЫ ОТЧЕТОВ
+// =======================================================
+async function initDynamicsPage() {
+    const userId = document.body.dataset.userId;
+    if (!userId) return;
+
+    const calendarsContainer = document.getElementById('calendars-container');
+    const weeksFilter = document.getElementById('weeks-filter');
+    const dailyChartCanvas = document.getElementById('dailyActivityChart');
+    const dayPicker = document.getElementById('day-picker');
+    const hourlyChartCanvas = document.getElementById('hourlyActivityChart');
+
+    try {
+        const response = await fetch(`/api/dynamics_data/${userId}`);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+
+        renderCalendars(data.calendars, calendarsContainer);
+        renderDailyChart(data.activity_by_day, data.total_weeks, dailyChartCanvas, weeksFilter);
+        renderHourlyChart(data.activity_by_hour, hourlyChartCanvas, dayPicker);
+
+    } catch (error) {
+        calendarsContainer.innerHTML = `<p style="color: red;">Не удалось загрузить данные: ${error.message}</p>`;
+        console.error('Error fetching dynamics data:', error);
+    }
+}
+
+function renderCalendars(calendarsData, container) {
+    container.innerHTML = '';
+    if (Object.keys(calendarsData).length === 0) {
+        container.innerHTML = '<p>Нет данных по задачам для отображения.</p>';
+        return;
+    }
+
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    for (const taskName in calendarsData) {
+        const activeDays = calendarsData[taskName];
+        const calendarEl = document.createElement('div');
+        calendarEl.className = 'calendar';
+        calendarEl.innerHTML = `
+            <div class="calendar-header">${taskName}</div>
+            <div class="calendar-body"></div>
+        `;
+        container.appendChild(calendarEl);
+        
+        const calendarBody = calendarEl.querySelector('.calendar-body');
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun, 1=Mon
+        const adjustedFirstDay = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1; // 0=Mon
+
+        const дниНедели = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+        дниНедели.forEach(day => {
+            calendarBody.innerHTML += `<div class="calendar-day header">${day}</div>`;
+        });
+        
+        for (let i = 0; i < adjustedFirstDay; i++) {
+            calendarBody.innerHTML += `<div class="calendar-day"></div>`;
+        }
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dayEl = document.createElement('div');
+            dayEl.className = 'calendar-day';
+            dayEl.textContent = day;
+            if (activeDays.includes(dateStr)) {
+                dayEl.classList.add('active');
+            }
+             if (day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear()) {
+                dayEl.classList.add('today');
+            }
+            calendarBody.appendChild(dayEl);
+        }
+    }
+}
+
+function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
+    const labels = dailyData.labels;
+    const data = dailyData.data;
+
+    // Populate filter
+    filter.innerHTML = '';
+    const weekOptions = [1, 2, 4];
+    weekOptions.forEach(w => {
+        if (totalWeeks >= w) {
+            const option = document.createElement('option');
+            option.value = w * 7;
+            option.textContent = `${w} недел${w === 1 ? 'я' : 'и'}`;
+            filter.appendChild(option);
+        }
+    });
+    const allTimeOption = document.createElement('option');
+    allTimeOption.value = labels.length;
+    allTimeOption.textContent = 'Все время';
+    allTimeOption.selected = true;
+    filter.appendChild(allTimeOption);
+
+    const chart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Часы работы',
+                data: data,
+                backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                borderColor: 'rgba(0, 122, 255, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Часы' } },
+                x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } }
+            },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } }
+        }
+    });
+
+    filter.addEventListener('change', (e) => {
+        const daysToShow = parseInt(e.target.value, 10);
+        const startDate = new Date(labels[labels.length - daysToShow]);
+        chart.options.scales.x.min = startDate.getTime();
+        chart.options.scales.x.max = new Date(labels[labels.length - 1]).getTime();
+        chart.update();
+    });
+    filter.dispatchEvent(new Event('change'));
+}
+
+
+function renderHourlyChart(hourlyData, canvas, picker) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    picker.value = todayStr;
+    
+    let chart = null;
+
+    function updateChart(selectedDate) {
+        const dayData = hourlyData.filter(d => d.date_str === selectedDate);
+        const hours = Array(24).fill(0);
+        dayData.forEach(d => {
+            hours[d.hour] += d.duration_hours;
+        });
+
+        const chartData = {
+            labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+            datasets: [{
+                label: 'Часы работы',
+                data: hours,
+                backgroundColor: 'rgba(52, 199, 89, 0.6)',
+                borderColor: 'rgba(52, 199, 89, 1)',
+                borderWidth: 1
+            }]
+        };
+
+        if (chart) {
+            chart.data = chartData;
+            chart.update();
+        } else {
+            chart = new Chart(canvas, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    }
+
+    picker.addEventListener('change', (e) => updateChart(e.target.value));
+    updateChart(todayStr);
+}
+
+
+// =======================================================
+//        ГЛАВНЫЙ ИНИЦИАЛИЗАТОР
+// =======================================================
 document.addEventListener('DOMContentLoaded', () => {
-    appState.userId = document.body.dataset.userId; 
+    appState.userId = document.body.dataset.userId;
 
     initFabMenu();
     initModalClose();
@@ -381,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const taskName = document.getElementById('task-name-input').value.trim();
             const location = document.querySelector('#location-group .choice-btn.selected')?.dataset.value;
             const feeling_start = document.querySelector('#feeling-start-group .choice-btn.selected')?.dataset.value;
-            
+
             if (!taskName || !location || !feeling_start) {
                 alert('Пожалуйста, заполните все поля.');
                 return;
@@ -396,8 +563,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (document.querySelector('.timer-page')) initTimerPage();
+    if (document.querySelector('.timer-page')) {
+        initTimerPage();
+    }
+    // ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ЗДЕСЬ
     if (document.querySelector('.dynamics-page')) {
-        // Здесь должна быть функция initDynamicsPage(), если она вам нужна
+        initDynamicsPage();
     }
 });
