@@ -1,3 +1,5 @@
+--- START OF FILE app.py ---
+
 import os
 import json
 import locale
@@ -143,6 +145,36 @@ def generate_analysis_report(thoughts, timers):
     if not gemini_model: return "Модель анализа недоступна."
     
     local_tz = tz.gettz('Europe/Moscow')
+
+    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Определение date_range_str ---
+    all_dates = []
+    if thoughts:
+        for t in thoughts:
+            if t.get('timestamp'):
+                try:
+                    all_dates.append(parser.isoparse(t['timestamp']))
+                except (parser.ParserError, TypeError):
+                    pass # Игнорируем невалидные метки
+    if timers:
+        for t in timers:
+            if t.get('start_time'):
+                try:
+                    naive_time = parser.parse(t['start_time'])
+                    local_time = local_tz.localize(naive_time, is_dst=None)
+                    all_dates.append(local_time.astimezone(timezone.utc))
+                except (parser.ParserError, TypeError):
+                    pass # Игнорируем невалидные метки
+
+    date_range_str = "текущий период"
+    if all_dates:
+        min_date = min(all_dates).astimezone(local_tz)
+        max_date = max(all_dates).astimezone(local_tz)
+        if min_date.date() == max_date.date():
+            date_range_str = min_date.strftime('%d %B %Y г.')
+        else:
+            date_range_str = f"период с {min_date.strftime('%d %B')} по {max_date.strftime('%d %B %Y г.')}"
+    # --- КОНЕЦ ИЗМЕНЕНИЯ ---
+
     thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(local_tz).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
     
     timer_text = "Нет данных об активности."
