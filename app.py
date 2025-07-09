@@ -107,11 +107,10 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
         print(f"Ошибка нормализации с помощью ИИ: {e}")
         return new_task_name
 
-def get_last_analysis_timestamp(analyses):
+def get_last_analysis_timestamp_utc(analyses):
     if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     last_utc_str = analyses[0].get('thoughts_analyzed_until')
-    # Функция теперь всегда возвращает "осведомленное" время в UTC
     return parser.isoparse(last_utc_str) if last_utc_str else None
 
 def get_new_data(records, last_time_utc, time_key, is_utc):
@@ -131,7 +130,7 @@ def get_new_data(records, last_time_utc, time_key, is_utc):
                 record_time_utc = parser.isoparse(ts_str)
             else:
                 naive_time = parser.parse(ts_str)
-                local_time = naive_time.replace(tzinfo=local_tz)
+                local_time = local_tz.localize(naive_time, is_dst=None)
                 record_time_utc = local_time.astimezone(timezone.utc)
             
             if record_time_utc > last_time_utc:
@@ -265,35 +264,45 @@ def dashboard(user_id):
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'analyze':
-            thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-            timers = get_data_from_sheet(worksheet_timer_logs, user_id)
-            analyses = get_data_from_sheet(worksheet_analyses, user_id)
-            
-            last_ts_utc = get_last_analysis_timestamp(analyses)
-            
-            new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
-            new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
-
-            if new_thoughts or new_timers:
-                analysis_result = generate_analysis_report(new_thoughts, new_timers)
+            try:
+                thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
+                timers = get_data_from_sheet(worksheet_timer_logs, user_id)
+                analyses = get_data_from_sheet(worksheet_analyses, user_id)
                 
-                all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
+                last_ts_utc = get_last_analysis_timestamp_utc(analyses)
                 
-                local_tz = tz.gettz('Europe/Moscow')
-                for t in new_timers:
-                    if t.get('start_time'):
-                        local_time = parser.parse(t['start_time']).replace(tzinfo=local_tz)
-                        all_ts_utc.append(local_time.astimezone(timezone.utc))
+                new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
+                new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
 
-                if all_ts_utc:
-                    latest_utc = max(all_ts_utc)
-                    worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
+                if new_thoughts or new_timers:
+                    analysis_result = generate_analysis_report(new_thoughts, new_timers)
+                    
+                    all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
+                    
+                    local_tz = tz.gettz('Europe/Moscow')
+                    for t in new_timers:
+                        if t.get('start_time'):
+                            local_time = local_tz.localize(parser.parse(t['start_time']), is_dst=None)
+                            all_ts_utc.append(local_time.astimezone(timezone.utc))
+
+                    if all_ts_utc:
+                        latest_utc = max(all_ts_utc)
+                        worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
+                else:
+                    flash("Нет новых данных для анализа.", "success")
+
+            except Exception as e:
+                print(f"Критическая ошибка при анализе: {e}")
+                flash(f"Произошла ошибка при анализе: {e}", "danger")
+                return redirect(url_for('dashboard', user_id=user_id))
+
         else:
             thought = request.form.get('thought')
             if thought:
                 worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
                 flash("Мысль сохранена!", "success")
             return redirect(url_for('dashboard', user_id=user_id))
+            
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
