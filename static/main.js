@@ -470,8 +470,18 @@ function renderHourlyChart(workSessions, canvas, picker) {
     const taskColorMap = new Map();
 
     function updateChart(selectedDateStr) {
-        const daySessions = workSessions.filter(s => new Date(s.start_time).toISOString().startsWith(selectedDateStr));
+        const dayStart = new Date(`${selectedDateStr}T00:00:00`);
+        const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
         
+        // **ИСПРАВЛЕННЫЙ ФИЛЬТР**
+        const daySessions = workSessions.filter(s => {
+            if (!s.start_time || !s.end_time) return false;
+            const sessionStart = new Date(s.start_time);
+            const sessionEnd = new Date(s.end_time);
+            // Проверяем, что интервал сессии пересекается с выбранным днём
+            return sessionStart < dayEnd && sessionEnd > dayStart;
+        });
+
         // Получаем уникальные задачи для оси Y
         const yLabels = [...new Set(daySessions.map(s => s.task_name))];
 
@@ -495,9 +505,6 @@ function renderHourlyChart(workSessions, canvas, picker) {
             };
         });
         
-        const dayStart = new Date(`${selectedDateStr}T00:00:00`);
-        const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
-
         const chartData = {
             labels: yLabels, // Задаем метки для оси Y
             datasets: datasets
@@ -507,6 +514,7 @@ function renderHourlyChart(workSessions, canvas, picker) {
             chart.data = chartData;
             chart.options.scales.x.min = dayStart;
             chart.options.scales.x.max = dayEnd;
+            chart.options.scales.y.labels = yLabels; // Обновляем метки Y
             chart.update();
         } else {
             chart = new Chart(canvas, {
