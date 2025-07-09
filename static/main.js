@@ -143,9 +143,6 @@ function initModalClose() {
     document.getElementById('close-start-session-modal-btn')?.addEventListener('click', hideModals);
 }
 
-// =======================================================
-//        ГЛАВНЫЙ МОДУЛЬ УПРАВЛЕНИЯ ТАЙМЕРОМ
-// =======================================================
 function initTimerPage() {
     let timerModule = {}; 
 
@@ -169,9 +166,7 @@ function initTimerPage() {
     const decreaseBreakBtn = document.getElementById('decrease-break-time-btn');
     const increaseBreakBtn = document.getElementById('increase-break-time-btn');
 
-    timerModule.saveCurrentState = () => {
-        setTimerState({ isActive: true, ...appState.session });
-    };
+    timerModule.saveCurrentState = () => setTimerState({ isActive: true, ...appState.session });
 
     timerModule.tick = () => {
         if (!appState.session.isRunning) return;
@@ -274,7 +269,6 @@ function initTimerPage() {
         showModal('start-session-modal');
         document.querySelectorAll('#start-session-modal .choice-btn').forEach(btn => btn.classList.remove('selected'));
         const startBtn = document.getElementById('start-resumed-session-btn');
-
         startBtn.onclick = () => {
              const selectedFeeling = document.querySelector('#feeling-start-group-resumed .choice-btn.selected');
              if (!selectedFeeling) {
@@ -298,13 +292,11 @@ function initTimerPage() {
                 duration_seconds: appState.session.elapsedSeconds,
             });
         }
-        
         appState.session.mode = 'work';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
         timerModule.saveCurrentState();
         timerModule.updateUI();
-        
         startWorkSessionWithPrompt();
     }
     
@@ -312,9 +304,9 @@ function initTimerPage() {
         if (appState.session.isRunning) {
             timerModule.pauseTimer();
         } else {
-            if (appState.session.elapsedSeconds > 0) { // Это "продолжить"
+            if (appState.session.elapsedSeconds > 0) {
                 startWorkSessionWithPrompt();
-            } else { // Это самый первый старт
+            } else {
                 timerModule.startTimer();
             }
         }
@@ -384,11 +376,11 @@ async function initDynamicsPage() {
 
     try {
         const response = await fetch(`/api/dynamics_data/${userId}`);
-        if (!response.ok) throw new Error('Network response was not ok');
+        if (!response.ok) throw new Error(`Network response was not ok: ${response.statusText}`);
         const data = await response.json();
         renderCalendars(data.calendars, calendarsContainer);
         renderDailyChart(data.activity_by_day, data.total_weeks, dailyChartCanvas, weeksFilter);
-        renderHourlyChart(data.activity_by_hour, hourlyChartCanvas, dayPicker);
+        renderHourlyChart(data.work_sessions_list, hourlyChartCanvas, dayPicker);
     } catch (error) {
         calendarsContainer.innerHTML = `<p style="color: red;">Не удалось загрузить данные: ${error.message}</p>`;
         console.error('Error fetching dynamics data:', error);
@@ -429,12 +421,10 @@ function renderCalendars(calendarsData, container) {
     }
 }
 
-// --- ИЗМЕНЕНИЕ ЗДЕСЬ: Исправлена логика фильтрации графика ---
 function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     const allLabels = dailyData.labels;
     const allDataPoints = dailyData.data;
 
-    // Заполняем фильтр
     filter.innerHTML = '';
     [1, 2, 4].forEach(w => {
         if (totalWeeks >= w) {
@@ -450,74 +440,115 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     allTimeOption.selected = true;
     filter.appendChild(allTimeOption);
 
-    // Создаем график с полными данными
-    const chart = new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: allLabels,
-            datasets: [{
-                label: 'Часы работы',
-                data: allDataPoints,
-                backgroundColor: 'rgba(0, 122, 255, 0.6)',
-                borderColor: 'rgba(0, 122, 255, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Часы' } },
-                x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } }
-            },
-            plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } }
-        }
-    });
+    const chart = new Chart(canvas, { type: 'bar', data: { labels: allLabels, datasets: [{ label: 'Часы работы', data: allDataPoints, backgroundColor: 'rgba(0, 122, 255, 0.6)', borderColor: 'rgba(0, 122, 255, 1)', borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } }, x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } } } });
 
-    // Функция для обновления данных на графике
     function updateChartData(daysToShow) {
         const visibleLabels = allLabels.slice(-daysToShow);
         const visibleData = allDataPoints.slice(-daysToShow);
-        
         chart.data.labels = visibleLabels;
         chart.data.datasets[0].data = visibleData;
         chart.update();
     }
     
-    // Вешаем обработчик на фильтр
     filter.addEventListener('change', (e) => {
         const daysToShow = parseInt(e.target.value, 10);
         updateChartData(daysToShow);
     });
 
-    // Инициализируем график с полным набором данных
     updateChartData(allLabels.length);
-    // Устанавливаем значение фильтра по умолчанию
     filter.value = allLabels.length;
 }
 
-function renderHourlyChart(hourlyData, canvas, picker) {
-    const todayStr = new Date().toISOString().split('T')[0];
-    picker.value = todayStr;
+// --- ИЗМЕНЕНИЕ: Полностью новая функция для Gantt-графика ---
+function renderHourlyChart(workSessions, canvas, picker) {
     let chart = null;
-    function updateChart(selectedDate) {
-        const dayData = hourlyData.filter(d => d.date_str === selectedDate);
-        const hours = Array(24).fill(0);
-        dayData.forEach(d => { hours[d.hour] += d.duration_hours; });
-        const chartData = { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: 'Часы работы', data: hours, backgroundColor: 'rgba(52, 199, 89, 0.6)', borderColor: 'rgba(52, 199, 89, 1)', borderWidth: 1 }] };
+    const colorPalette = [
+        'rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)',
+        'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)',
+        'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)'
+    ];
+
+    function updateChart(selectedDateStr) {
+        const daySessions = workSessions.filter(s => new Date(s.start_time).toISOString().startsWith(selectedDateStr));
+
+        const tasksForDay = daySessions.reduce((acc, session) => {
+            if (!acc[session.task_name]) {
+                acc[session.task_name] = [];
+            }
+            acc[session.task_name].push([new Date(session.start_time), new Date(session.end_time)]);
+            return acc;
+        }, {});
+
+        const labels = Object.keys(tasksForDay);
+        const datasets = labels.map((taskName, index) => ({
+            label: taskName,
+            data: tasksForDay[taskName],
+            backgroundColor: colorPalette[index % colorPalette.length],
+            barPercentage: 0.8,
+            categoryPercentage: 0.9,
+        }));
+        
+        const dayStart = new Date(`${selectedDateStr}T00:00:00`);
+        const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
+
+        const chartData = { labels, datasets };
+
         if (chart) {
             chart.data = chartData;
+            chart.options.scales.x.min = dayStart;
+            chart.options.scales.x.max = dayEnd;
             chart.update();
         } else {
-            chart = new Chart(canvas, { type: 'bar', data: chartData, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } } }, plugins: { legend: { display: false } } } });
+            chart = new Chart(canvas, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    indexAxis: 'y', // Делаем график горизонтальным
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: dayStart,
+                            max: dayEnd,
+                            time: {
+                                unit: 'hour',
+                                displayFormats: { hour: 'HH:mm' }
+                            },
+                            position: 'bottom',
+                            title: { display: true, text: 'Время дня' }
+                        },
+                        y: {
+                           title: { display: true, text: 'Задачи' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (context) => context[0]?.dataset.label || '',
+                                label: (context) => {
+                                    const start = new Date(context.raw[0]);
+                                    const end = new Date(context.raw[1]);
+                                    const durationMs = end - start;
+                                    const durationMins = Math.round(durationMs / 60000);
+                                    const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                                    const endTime = end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                                    return `Период: ${startTime} - ${endTime} (${durationMins} мин)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
     }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    picker.value = todayStr;
     picker.addEventListener('change', (e) => updateChart(e.target.value));
     updateChart(todayStr);
 }
 
-
-// =======================================================
-//        ГЛАВНЫЙ ИНИЦИАЛИЗАТОР
-// =======================================================
 document.addEventListener('DOMContentLoaded', () => {
     appState.userId = document.body.dataset.userId;
 
