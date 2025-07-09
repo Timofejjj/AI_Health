@@ -110,15 +110,11 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
 def get_last_analysis_timestamp(analyses):
     if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
-    last = analyses[0].get('thoughts_analyzed_until')
-    return parser.isoparse(last) if last else None
+    last_utc_str = analyses[0].get('thoughts_analyzed_until')
+    # Функция теперь всегда возвращает "осведомленное" время в UTC
+    return parser.isoparse(last_utc_str) if last_utc_str else None
 
 def get_new_data(records, last_time_utc, time_key, is_utc):
-    """
-    Надежно отбирает новые записи, сравнивая все в UTC.
-    `is_utc=True` для полей, хранящихся в UTC (мысли).
-    `is_utc=False` для полей, хранящихся в локальном времени (таймеры).
-    """
     if not records: return []
     if last_time_utc is None: return records
     
@@ -130,16 +126,14 @@ def get_new_data(records, last_time_utc, time_key, is_utc):
         if not ts_str: continue
         
         try:
+            record_time_utc = None
             if is_utc:
-                # Временная метка уже в UTC (из таблицы мыслей)
                 record_time_utc = parser.isoparse(ts_str)
             else:
-                # Временная метка в локальном времени (из таблицы таймеров)
                 naive_time = parser.parse(ts_str)
                 local_time = naive_time.replace(tzinfo=local_tz)
                 record_time_utc = local_time.astimezone(timezone.utc)
             
-            # Сравнение всегда происходит в UTC
             if record_time_utc > last_time_utc:
                 new_records.append(rec)
         except Exception as e:
@@ -277,7 +271,6 @@ def dashboard(user_id):
             
             last_ts_utc = get_last_analysis_timestamp(analyses)
             
-            # Используем новую, надежную функцию
             new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
             new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
 
