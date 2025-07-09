@@ -19,20 +19,16 @@ MOSCOW_TZ = tz.gettz('Europe/Moscow')
 def markdown_filter(s):
     return markdown.markdown(s or '', extensions=['fenced_code', 'tables'])
 
-# --- ИСПРАВЛЕНИЕ: Фильтр для корректного отображения времени ---
+# Фильтр для корректного отображения времени
 @app.template_filter('format_datetime')
 def format_datetime(value):
     if not value:
         return ""
     try:
-        # Парсим UTC время из строки
         utc_time = parser.isoparse(value)
-        # Конвертируем в московское время
         local_time = utc_time.astimezone(MOSCOW_TZ)
-        # Форматируем для вывода
-        return local_time.strftime('%Y-%m-%d %H:%M:%S')
+        return local_time.strftime('%Y-%m-%d %H:%M')
     except (ValueError, TypeError):
-        # Если формат некорректен, возвращаем как есть
         return value
 
 try:
@@ -144,9 +140,7 @@ def get_new_data(records, last_time_utc, time_key, is_utc):
             if is_utc:
                 record_time_utc = parser.isoparse(ts_str)
             else:
-                # ИСПРАВЛЕНИЕ: Правильная работа с часовыми поясами для dateutil
                 naive_time = parser.parse(ts_str)
-                # Указываем, что это время в Москве, а затем конвертируем в UTC для сравнения
                 local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                 record_time_utc = local_time.astimezone(timezone.utc)
 
@@ -169,7 +163,6 @@ def generate_analysis_report(thoughts, timers):
         for t in timers:
             if t.get('start_time'):
                 try:
-                    # ИСПРАВЛЕНИЕ: Правильная работа с часовыми поясами для dateutil
                     naive_time = parser.parse(t['start_time'])
                     local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                     all_dates.append(local_time.astimezone(timezone.utc))
@@ -194,7 +187,7 @@ def generate_analysis_report(thoughts, timers):
         
         sessions_summary = []
         for index, row in df.iterrows():
-            session_info = f"- Задача: '{row.get('task_name_normalized', 'N/A')}', Длительность: {row['duration_minutes']} мин"
+            session_info = f"- Задача: '{row.get('task_name_normalized', row.get('task_name_raw', 'N/A'))}', Длительность: {row['duration_minutes']} мин"
             if pd.notna(row.get('location')) and row.get('location') != '': session_info += f", Место: {row['location']}"
             if pd.notna(row.get('feeling_start')) and row.get('feeling_start') != '': session_info += f", Начало: {row['feeling_start']}"
             if pd.notna(row.get('feeling_end')) and row.get('feeling_end') != '': session_info += f", Конец: {row['feeling_end']}"
@@ -325,7 +318,6 @@ def dashboard(user_id):
         else:
             thought = request.form.get('thought')
             if thought:
-                # Сохранение мысли происходит корректно в UTC
                 worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
                 flash("Мысль сохранена!", "success")
             return redirect(url_for('dashboard', user_id=user_id))
@@ -415,10 +407,12 @@ def get_dynamics_data(user_id):
         work_sessions = df[df['session_type'] == 'Работа'].copy()
         if work_sessions.empty: return jsonify(empty)
 
-        work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer')
+        work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
 
-        task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns else 'task_name_raw'
+        task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns and not work_sessions['task_name_normalized'].isnull().all() else 'task_name_raw'
         if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
+        work_sessions[task_col] = work_sessions[task_col].fillna('Без названия')
+
 
         calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
         
@@ -449,7 +443,7 @@ def get_dynamics_data(user_id):
         })
     except Exception as e:
         print(f"Критическая ошибка в get_dynamics_data: {e}")
-        return jsonify(empty), 500
+        return jsonify(status="error", message=str(e)), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
