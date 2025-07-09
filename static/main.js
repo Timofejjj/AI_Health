@@ -429,32 +429,69 @@ function renderCalendars(calendarsData, container) {
     }
 }
 
+// --- ИЗМЕНЕНИЕ ЗДЕСЬ: Исправлена логика фильтрации графика ---
 function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
-    const labels = dailyData.labels;
-    const data = dailyData.data;
+    const allLabels = dailyData.labels;
+    const allDataPoints = dailyData.data;
+
+    // Заполняем фильтр
     filter.innerHTML = '';
     [1, 2, 4].forEach(w => {
         if (totalWeeks >= w) {
             const option = document.createElement('option');
             option.value = w * 7;
-            option.textContent = `${w} недел${w === 1 ? 'я' : 'и'}`;
+            option.textContent = `${w} недел${w === 1 ? 'я' : (w > 1 && w < 5 ? 'и' : 'ь')}`;
             filter.appendChild(option);
         }
     });
     const allTimeOption = document.createElement('option');
-    allTimeOption.value = labels.length;
+    allTimeOption.value = allLabels.length;
     allTimeOption.textContent = 'Все время';
     allTimeOption.selected = true;
     filter.appendChild(allTimeOption);
-    const chart = new Chart(canvas, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Часы работы', data: data, backgroundColor: 'rgba(0, 122, 255, 0.6)', borderColor: 'rgba(0, 122, 255, 1)', borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } }, x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } } } });
-    filter.addEventListener('change', (e) => {
-        const daysToShow = Math.min(parseInt(e.target.value, 10), labels.length);
-        const startDate = new Date(labels[labels.length - daysToShow]);
-        chart.options.scales.x.min = startDate.getTime();
-        chart.options.scales.x.max = new Date(labels[labels.length - 1]).getTime();
-        chart.update();
+
+    // Создаем график с полными данными
+    const chart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: allLabels,
+            datasets: [{
+                label: 'Часы работы',
+                data: allDataPoints,
+                backgroundColor: 'rgba(0, 122, 255, 0.6)',
+                borderColor: 'rgba(0, 122, 255, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Часы' } },
+                x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } }
+            },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } }
+        }
     });
-    filter.dispatchEvent(new Event('change'));
+
+    // Функция для обновления данных на графике
+    function updateChartData(daysToShow) {
+        const visibleLabels = allLabels.slice(-daysToShow);
+        const visibleData = allDataPoints.slice(-daysToShow);
+        
+        chart.data.labels = visibleLabels;
+        chart.data.datasets[0].data = visibleData;
+        chart.update();
+    }
+    
+    // Вешаем обработчик на фильтр
+    filter.addEventListener('change', (e) => {
+        const daysToShow = parseInt(e.target.value, 10);
+        updateChartData(daysToShow);
+    });
+
+    // Инициализируем график с полным набором данных
+    updateChartData(allLabels.length);
+    // Устанавливаем значение фильтра по умолчанию
+    filter.value = allLabels.length;
 }
 
 function renderHourlyChart(hourlyData, canvas, picker) {
@@ -477,6 +514,7 @@ function renderHourlyChart(hourlyData, canvas, picker) {
     updateChart(todayStr);
 }
 
+
 // =======================================================
 //        ГЛАВНЫЙ ИНИЦИАЛИЗАТОР
 // =======================================================
@@ -486,8 +524,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initFabMenu();
     initModalClose();
     updatePersistentBar();
-
-    // БЛОК, КОТОРЫЙ СТАВИЛ ТАЙМЕР НА ПАУЗУ, БЫЛ УДАЛЕН ОТСЮДА
 
     document.querySelectorAll('.choice-group').forEach(group => {
         group.addEventListener('click', (e) => {
