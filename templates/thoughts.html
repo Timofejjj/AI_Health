@@ -12,7 +12,8 @@
         {% if thoughts %}
             {% for thought in thoughts %}
             <div class="list-item">
-                <div class="meta">{{ thought.timestamp | replace("T", " ") | replace("Z", "") }}</div>
+                <!-- ИСПОЛЬЗУЕМ НОВЫЙ ФИЛЬТР ДЛЯ КОРРЕКТНОГО ОТОБРАЖЕНИЯ ВРЕМЕНИ -->
+                <div class="meta">{{ thought.timestamp | format_datetime }}</div>
                 <div class="content">{{ thought.content }}</div>
             </div>
             {% endfor %}
