@@ -459,39 +459,49 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     filter.value = allLabels.length;
 }
 
-// --- ИЗМЕНЕНИЕ: Полностью новая функция для Gantt-графика ---
+// --- ИЗМЕНЕНИЕ ЗДЕСЬ: Полностью переписанная функция для Gantt-графика ---
 function renderHourlyChart(workSessions, canvas, picker) {
     let chart = null;
     const colorPalette = [
-        'rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)',
-        'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)',
-        'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)'
+        'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)',
+        'rgba(255, 206, 86, 0.8)', 'rgba(75, 192, 192, 0.8)',
+        'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)'
     ];
+    const taskColorMap = new Map();
 
     function updateChart(selectedDateStr) {
         const daySessions = workSessions.filter(s => new Date(s.start_time).toISOString().startsWith(selectedDateStr));
+        
+        // Получаем уникальные задачи для оси Y
+        const yLabels = [...new Set(daySessions.map(s => s.task_name))];
 
-        const tasksForDay = daySessions.reduce((acc, session) => {
-            if (!acc[session.task_name]) {
-                acc[session.task_name] = [];
+        // Каждая сессия - это отдельный набор данных, чтобы они рисовались независимо
+        const datasets = daySessions.map(session => {
+            // Назначаем постоянный цвет для каждой задачи
+            if (!taskColorMap.has(session.task_name)) {
+                taskColorMap.set(session.task_name, colorPalette[taskColorMap.size % colorPalette.length]);
             }
-            acc[session.task_name].push([new Date(session.start_time), new Date(session.end_time)]);
-            return acc;
-        }, {});
+            const color = taskColorMap.get(session.task_name);
 
-        const labels = Object.keys(tasksForDay);
-        const datasets = labels.map((taskName, index) => ({
-            label: taskName,
-            data: tasksForDay[taskName],
-            backgroundColor: colorPalette[index % colorPalette.length],
-            barPercentage: 0.8,
-            categoryPercentage: 0.9,
-        }));
+            return {
+                label: session.task_name, // Для тултипа
+                data: [{
+                    x: [new Date(session.start_time), new Date(session.end_time)],
+                    y: session.task_name
+                }],
+                backgroundColor: color,
+                barPercentage: 0.8,
+                categoryPercentage: 0.9,
+            };
+        });
         
         const dayStart = new Date(`${selectedDateStr}T00:00:00`);
         const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
 
-        const chartData = { labels, datasets };
+        const chartData = {
+            labels: yLabels, // Задаем метки для оси Y
+            datasets: datasets
+        };
 
         if (chart) {
             chart.data = chartData;
@@ -508,8 +518,8 @@ function renderHourlyChart(workSessions, canvas, picker) {
                     scales: {
                         x: {
                             type: 'time',
-                            min: dayStart,
-                            max: dayEnd,
+                            min: dayStart.getTime(),
+                            max: dayEnd.getTime(),
                             time: {
                                 unit: 'hour',
                                 displayFormats: { hour: 'HH:mm' }
@@ -522,13 +532,15 @@ function renderHourlyChart(workSessions, canvas, picker) {
                         }
                     },
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                             display: false // Легенда бесполезна, т.к. датасетов много
+                        },
                         tooltip: {
                             callbacks: {
                                 title: (context) => context[0]?.dataset.label || '',
                                 label: (context) => {
-                                    const start = new Date(context.raw[0]);
-                                    const end = new Date(context.raw[1]);
+                                    const start = new Date(context.raw.x[0]);
+                                    const end = new Date(context.raw.x[1]);
                                     const durationMs = end - start;
                                     const durationMins = Math.round(durationMs / 60000);
                                     const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
