@@ -9,6 +9,7 @@ import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from google.oauth2.service_account import Credentials
 from dateutil import parser, tz
+import traceback
 
 # --- КОНФИГУРАЦИЯ ---
 app = Flask(__name__)
@@ -277,8 +278,7 @@ def dashboard(user_id):
                     if all_ts_utc:
                         latest_utc = max(all_ts_utc)
                         worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
-                else:
-                    flash("Нет новых данных для анализа.", "success")
+                else: flash("Нет новых данных для анализа.", "success")
             except Exception as e:
                 print(f"Критическая ошибка при анализе: {e}")
                 flash(f"Произошла ошибка при анализе: {e}", "danger")
@@ -355,21 +355,15 @@ def get_dynamics_data(user_id):
         df = pd.DataFrame(records)
         if df.empty: return jsonify(empty_response)
 
-        required_cols = ['start_time', 'end_time', 'duration_seconds', 'session_type']
-        if not all(col in df.columns for col in required_cols):
-            print(f"Ошибка: отсутствуют необходимые колонки в Google Sheet. Требуются: {required_cols}")
-            return jsonify(empty_response)
-
+        if 'start_time' not in df.columns: return jsonify(empty_response)
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
-        df['end_time'] = pd.to_datetime(df['end_time'], errors='coerce')
-        df.dropna(subset=['start_time', 'end_time'], inplace=True)
+        df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty_response)
-        
+
         work_sessions = df[df['session_type'] == 'Работа'].copy()
         if work_sessions.empty: return jsonify(empty_response)
 
         work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
-        work_sessions.loc[:, 'end_time_local'] = work_sessions['end_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
         
         task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns and not work_sessions['task_name_normalized'].isnull().all() else 'task_name_raw'
         if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
@@ -390,17 +384,22 @@ def get_dynamics_data(user_id):
         all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
         daily_data = daily.tolist()
 
-        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-        # Мы готовим DataFrame для преобразования в словарь, но не меняем типы данных на строки
-        sessions_for_json = work_sessions[[task_col, 'start_time_local', 'end_time_local']].copy()
-        sessions_for_json.rename(columns={
-            task_col: 'task_name',
-            'start_time_local': 'start_time',
-            'end_time_local': 'end_time'
-        }, inplace=True)
-        
-        # Преобразование в словарь записей происходит здесь, сохраняя объекты datetime
-        work_sessions_list = sessions_for_json.to_dict('records')
+        gantt_df = work_sessions.copy()
+        work_sessions_list = []
+        if 'end_time' in gantt_df.columns:
+            gantt_df['end_time'] = pd.to_datetime(gantt_df['end_time'], errors='coerce')
+            gantt_df.dropna(subset=['end_time'], inplace=True) 
+            
+            if not gantt_df.empty:
+                gantt_df.loc[:, 'end_time_local'] = gantt_df['end_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
+                
+                sessions_for_json = gantt_df[[task_col, 'start_time_local', 'end_time_local']].copy()
+                sessions_for_json.rename(columns={
+                    task_col: 'task_name',
+                    'start_time_local': 'start_time',
+                    'end_time_local': 'end_time'
+                }, inplace=True)
+                work_sessions_list = sessions_for_json.to_dict('records')
 
         return jsonify({
             'calendars': calendars,
@@ -410,6 +409,7 @@ def get_dynamics_data(user_id):
         })
     except Exception as e:
         print(f"Критическая ошибка в get_dynamics_data: {e}")
+        traceback.print_exc()
         return jsonify(status="error", message=str(e)), 500
 
 if __name__ == '__main__':
