@@ -19,11 +19,9 @@ MOSCOW_TZ = tz.gettz('Europe/Moscow')
 def markdown_filter(s):
     return markdown.markdown(s or '', extensions=['fenced_code', 'tables'])
 
-# Фильтр для корректного отображения времени
 @app.template_filter('format_datetime')
 def format_datetime(value):
-    if not value:
-        return ""
+    if not value: return ""
     try:
         utc_time = parser.isoparse(value)
         local_time = utc_time.astimezone(MOSCOW_TZ)
@@ -48,7 +46,6 @@ try:
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     if not google_creds_json or not sheet_id:
         raise ValueError("Переменные окружения GOOGLE_CREDENTIALS_JSON и GOOGLE_SHEET_ID должны быть установлены.")
-
     creds_info = json.loads(google_creds_json)
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
@@ -109,13 +106,10 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
     try:
         response = gemini_model.generate_content(prompt)
         normalized_name = response.text.strip().replace("*", "").replace("`", "").replace("\"", "")
-        if normalized_name in unique_existing_tasks:
-             return normalized_name
-        else:
-             if normalized_name == new_task_name:
-                 return new_task_name
-             print(f"AI Normalization Warning: Model returned '{normalized_name}' which is not in existing tasks. Reverting to original '{new_task_name}'.")
-             return new_task_name
+        if normalized_name in unique_existing_tasks: return normalized_name
+        if normalized_name == new_task_name: return new_task_name
+        print(f"AI Normalization Warning: Model returned '{normalized_name}' which is not in existing tasks. Reverting to original '{new_task_name}'.")
+        return new_task_name
     except Exception as e:
         print(f"Ошибка нормализации с помощью ИИ: {e}")
         return new_task_name
@@ -129,12 +123,10 @@ def get_last_analysis_timestamp_utc(analyses):
 def get_new_data(records, last_time_utc, time_key, is_utc):
     if not records: return []
     if last_time_utc is None: return records
-
     new_records = []
     for rec in records:
         ts_str = rec.get(time_key)
         if not ts_str: continue
-
         try:
             record_time_utc = None
             if is_utc:
@@ -143,16 +135,13 @@ def get_new_data(records, last_time_utc, time_key, is_utc):
                 naive_time = parser.parse(ts_str)
                 local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                 record_time_utc = local_time.astimezone(timezone.utc)
-
-            if record_time_utc > last_time_utc:
-                new_records.append(rec)
+            if record_time_utc > last_time_utc: new_records.append(rec)
         except Exception as e:
             print(f"Невозможно распарсить дату: '{ts_str}' в ключе '{time_key}'. Ошибка: {e}")
     return new_records
 
 def generate_analysis_report(thoughts, timers):
     if not gemini_model: return "Модель анализа недоступна."
-
     all_dates = []
     if thoughts:
         for t in thoughts:
@@ -167,7 +156,6 @@ def generate_analysis_report(thoughts, timers):
                     local_time = naive_time.replace(tzinfo=MOSCOW_TZ)
                     all_dates.append(local_time.astimezone(timezone.utc))
                 except (parser.ParserError, TypeError): pass
-
     date_range_str = "текущий период"
     if all_dates:
         min_date = min(all_dates).astimezone(MOSCOW_TZ)
@@ -176,24 +164,22 @@ def generate_analysis_report(thoughts, timers):
             date_range_str = min_date.strftime('%d %B %Y г.')
         else:
             date_range_str = f"период с {min_date.strftime('%d %B')} по {max_date.strftime('%d %B %Y г.')}"
-
     thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
-    
     timer_text = "Нет данных об активности."
     if timers:
         df = pd.DataFrame(timers)
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df['duration_minutes'] = (pd.to_numeric(df['duration_seconds'], errors='coerce').fillna(0) / 60).round(1)
-        
         sessions_summary = []
         for index, row in df.iterrows():
-            session_info = f"- Задача: '{row.get('task_name_normalized', row.get('task_name_raw', 'N/A'))}', Длительность: {row['duration_minutes']} мин"
+            task_name_display = row.get('task_name_normalized', row.get('task_name_raw', 'N/A'))
+            session_info = f"- Задача: '{task_name_display}', Длительность: {row['duration_minutes']} мин"
             if pd.notna(row.get('location')) and row.get('location') != '': session_info += f", Место: {row['location']}"
             if pd.notna(row.get('feeling_start')) and row.get('feeling_start') != '': session_info += f", Начало: {row['feeling_start']}"
             if pd.notna(row.get('feeling_end')) and row.get('feeling_end') != '': session_info += f", Конец: {row['feeling_end']}"
             sessions_summary.append(session_info)
         timer_text = "\n".join(sessions_summary)
-
+    
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 Ты — мой когнитивный аналитик и стратегический коуч. Твоя главная задача — провести многофакторный анализ моих мыслей и рабочих сессий за указанный период. Цель — выявить скрытые причинно-следственные связи, спрогнозировать тренды и дать практические рекомендации.
@@ -288,40 +274,31 @@ def dashboard(user_id):
                 thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
                 timers = get_data_from_sheet(worksheet_timer_logs, user_id)
                 analyses = get_data_from_sheet(worksheet_analyses, user_id)
-                
                 last_ts_utc = get_last_analysis_timestamp_utc(analyses)
-                
                 new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
                 new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
-
                 if new_thoughts or new_timers:
                     analysis_result = generate_analysis_report(new_thoughts, new_timers)
-                    
                     all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
-                    
                     for t in new_timers:
                         if t.get('start_time'):
                             local_time = parser.parse(t['start_time']).replace(tzinfo=MOSCOW_TZ)
                             all_ts_utc.append(local_time.astimezone(timezone.utc))
-
                     if all_ts_utc:
                         latest_utc = max(all_ts_utc)
                         worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
                 else:
                     flash("Нет новых данных для анализа.", "success")
-
             except Exception as e:
                 print(f"Критическая ошибка при анализе: {e}")
                 flash(f"Произошла ошибка при анализе: {e}", "danger")
                 return redirect(url_for('dashboard', user_id=user_id))
-
         else:
             thought = request.form.get('thought')
             if thought:
                 worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
                 flash("Мысль сохранена!", "success")
             return redirect(url_for('dashboard', user_id=user_id))
-            
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
@@ -357,6 +334,7 @@ def log_timer_session():
     
     try:
         user_id = str(data['user_id'])
+        session_type = data.get('session_type', '')
         new_task_name = str(data['task_name'])
         
         start_time_utc = parser.isoparse(data['start_time'])
@@ -366,17 +344,23 @@ def log_timer_session():
         start_time_str = start_time_local.strftime('%Y-%m-%d %H:%M:%S')
         end_time_str = end_time_local.strftime('%Y-%m-%d %H:%M:%S')
         
+        # Упрощенная логика для нормализации имени задачи
         normalized_task = new_task_name
-        if data['session_type'] == 'Работа':
+        if session_type == 'Работа':
             all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
             existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
             normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
+        elif session_type == 'Перерыв':
+            normalized_task = 'Перерыв'
 
         duration = int(data['duration_seconds'])
 
+        # feeling_start будет None для перерывов, и это нормально
+        feeling_start = data.get('feeling_start')
+
         row = [
-            user_id, new_task_name, normalized_task, data.get('session_type', ''),
-            data.get('location', ''), data.get('feeling_start', ''), data.get('feeling_end', ''),
+            user_id, new_task_name, normalized_task, session_type,
+            data.get('location', ''), feeling_start, data.get('feeling_end', ''),
             start_time_str, end_time_str, duration
         ]
         worksheet_timer_logs.append_row(row)
@@ -391,50 +375,36 @@ def get_dynamics_data(user_id):
         records = get_data_from_sheet(worksheet_timer_logs, user_id)
         empty = {'calendars': {}, 'total_weeks': 1, 'activity_by_day': {'labels': [], 'data': []}, 'activity_by_hour': []}
         if not records: return jsonify(empty)
-        
         df = pd.DataFrame(records)
         if df.empty: return jsonify(empty)
-
         required_cols = ['start_time', 'duration_seconds', 'session_type']
         if not all(col in df.columns for col in required_cols):
             print(f"Ошибка: отсутствуют необходимые колонки в Google Sheet. Требуются: {required_cols}")
             return jsonify(empty)
-
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
         df.dropna(subset=['start_time'], inplace=True)
         if df.empty: return jsonify(empty)
-        
         work_sessions = df[df['session_type'] == 'Работа'].copy()
         if work_sessions.empty: return jsonify(empty)
-
         work_sessions.loc[:, 'start_time_local'] = work_sessions['start_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
-
         task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns and not work_sessions['task_name_normalized'].isnull().all() else 'task_name_raw'
         if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
         work_sessions[task_col] = work_sessions[task_col].fillna('Без названия')
-
-
         calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
-        
         work_sessions.loc[:, 'date'] = work_sessions['start_time_local'].dt.date
         work_sessions.loc[:, 'duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
-        
         first_date = work_sessions['start_time_local'].min().date()
         last_date = datetime.now(MOSCOW_TZ).date()
-
         weeks = max(1, (last_date - first_date).days // 7 + 1)
-        
         daily = work_sessions.groupby('date')['duration_hours'].sum()
         all_days_range = pd.date_range(start=first_date, end=max(last_date, first_date), freq='D')
         daily = daily.reindex(all_days_range, fill_value=0)
         all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
         daily_data = daily.tolist()
-
         hourly_output = pd.DataFrame()
         hourly_output['date_str'] = work_sessions['start_time_local'].dt.strftime('%Y-%m-%d')
         hourly_output['hour'] = work_sessions['start_time_local'].dt.hour
         hourly_output['duration_hours'] = work_sessions['duration_hours']
-        
         return jsonify({
             'calendars': calendars,
             'total_weeks': weeks,
