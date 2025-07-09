@@ -111,29 +111,46 @@ def get_last_analysis_timestamp(analyses):
     if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     last = analyses[0].get('thoughts_analyzed_until')
-    return parser.parse(last) if last else None
+    return parser.isoparse(last) if last else None
 
-def get_new_data(records, last_time, time_key):
+def get_new_data(records, last_time_utc, time_key, is_utc):
+    """
+    Надежно отбирает новые записи, сравнивая все в UTC.
+    `is_utc=True` для полей, хранящихся в UTC (мысли).
+    `is_utc=False` для полей, хранящихся в локальном времени (таймеры).
+    """
     if not records: return []
-    if last_time is None: return records
-    new = []
+    if last_time_utc is None: return records
+    
+    new_records = []
+    local_tz = tz.gettz('Europe/Moscow')
+
     for rec in records:
-        ts = rec.get(time_key)
-        if not ts: continue
+        ts_str = rec.get(time_key)
+        if not ts_str: continue
+        
         try:
-            record_time = parser.parse(ts)
-            if record_time.tzinfo is None:
-                record_time = record_time.replace(tzinfo=tz.gettz('Europe/Moscow'))
-            if record_time > last_time: 
-                new.append(rec)
-        except Exception as e: 
-            print(f"Невозможно распарсить дату: {ts}, ошибка: {e}")
-    return new
+            if is_utc:
+                # Временная метка уже в UTC (из таблицы мыслей)
+                record_time_utc = parser.isoparse(ts_str)
+            else:
+                # Временная метка в локальном времени (из таблицы таймеров)
+                naive_time = parser.parse(ts_str)
+                local_time = naive_time.replace(tzinfo=local_tz)
+                record_time_utc = local_time.astimezone(timezone.utc)
+            
+            # Сравнение всегда происходит в UTC
+            if record_time_utc > last_time_utc:
+                new_records.append(rec)
+        except Exception as e:
+            print(f"Невозможно распарсить дату: '{ts_str}' в ключе '{time_key}'. Ошибка: {e}")
+    return new_records
 
 def generate_analysis_report(thoughts, timers):
     if not gemini_model: return "Модель анализа недоступна."
     
-    thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(tz.gettz('Europe/Moscow')).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
+    local_tz = tz.gettz('Europe/Moscow')
+    thoughts_text = "\n".join(f"[{parser.isoparse(t['timestamp']).astimezone(local_tz).strftime('%Y-%m-%d %H:%M')}] {t['content']}" for t in thoughts if t.get('timestamp')) or "Нет новых записей мыслей."
     
     timer_text = "Нет данных об активности."
     if timers:
@@ -257,12 +274,16 @@ def dashboard(user_id):
             thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
             timers = get_data_from_sheet(worksheet_timer_logs, user_id)
             analyses = get_data_from_sheet(worksheet_analyses, user_id)
-            last_ts = get_last_analysis_timestamp(analyses)
-            new_thoughts = get_new_data(thoughts, last_ts, 'timestamp')
-            new_timers = get_new_data(timers, last_ts, 'start_time')
+            
+            last_ts_utc = get_last_analysis_timestamp(analyses)
+            
+            # Используем новую, надежную функцию
+            new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
+            new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
 
             if new_thoughts or new_timers:
                 analysis_result = generate_analysis_report(new_thoughts, new_timers)
+                
                 all_ts_utc = [parser.isoparse(t['timestamp']) for t in new_thoughts if t.get('timestamp')]
                 
                 local_tz = tz.gettz('Europe/Moscow')
