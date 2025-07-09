@@ -1,3 +1,5 @@
+--- START OF FILE main.js ---
+
 // =======================================================
 //        ГЛОБАЛЬНОЕ СОСТОЯНИЕ И UI
 // =======================================================
@@ -323,6 +325,7 @@ function initTimerPage() {
         appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
     }));
 
+    // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
     // Логика восстановления состояния
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
@@ -337,11 +340,11 @@ function initTimerPage() {
         }
 
         // Если таймер был запущен, когда мы ушли со страницы,
-        // нужно добавить время, прошедшее офлайн.
-        if (existingState.isRunning && existingState.startTime) {
-            const offlineDuration = (Date.now() - new Date(existingState.startTime).getTime()) / 1000;
-            appState.session.elapsedSeconds += offlineDuration;
-            startTimer(); // Сразу запускаем таймер
+        // просто перезапускаем интервал. Состояние (startTime, elapsedSeconds)
+        // уже корректно загружено из localStorage.
+        if (appState.session.isRunning) {
+            if (appState.timerInterval) clearInterval(appState.timerInterval);
+            appState.timerInterval = setInterval(tick, 1000);
         }
     } else if (taskNameFromUrl) {
         // Если нет активной сессии, но есть данные в URL - это новая сессия.
@@ -350,6 +353,7 @@ function initTimerPage() {
         appState.session.feeling_start = feelingStartFromUrl;
         saveCurrentState(); // Сразу сохраняем новую сессию
     }
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
     
     taskTitleHeader.textContent = appState.session.taskName;
     updateUI();
