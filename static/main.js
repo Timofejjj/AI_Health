@@ -95,7 +95,7 @@ function logSession(data) {
         user_id: appState.userId,
         task_name: appState.session.taskName || 'N/A',
         location: appState.session.location,
-        feeling_start: data.feeling_start, // Передаем явно, может быть undefined
+        feeling_start: data.feeling_start, 
         ...data
     };
 
@@ -236,8 +236,6 @@ function initTimerPage() {
         timerModule.saveCurrentState();
         timerModule.updateUI();
     };
-    
-    window.pauseActiveTimer = timerModule.pauseTimer;
 
     function completeWorkSession(feeling_end) {
         timerModule.pauseTimer();
@@ -247,13 +245,13 @@ function initTimerPage() {
             start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
             end_time: new Date().toISOString(),
             duration_seconds: finalState.elapsedSeconds,
-            feeling_start: finalState.feeling_start, // Передаем сохраненное чувство
+            feeling_start: finalState.feeling_start, 
             feeling_end: feeling_end,
         });
         appState.session.mode = 'break';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
-        appState.session.feeling_start = null; // Очищаем чувство для следующей сессии
+        appState.session.feeling_start = null; 
         timerModule.saveCurrentState();
         timerModule.updateUI();
     }
@@ -294,7 +292,7 @@ function initTimerPage() {
         if (appState.session.elapsedSeconds > 10) {
             logSession({
                 session_type: 'Перерыв',
-                task_name: 'Перерыв', // task_name все еще нужен для лога
+                task_name: 'Перерыв', 
                 start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: appState.session.elapsedSeconds,
@@ -479,7 +477,6 @@ function renderHourlyChart(hourlyData, canvas, picker) {
     updateChart(todayStr);
 }
 
-
 // =======================================================
 //        ГЛАВНЫЙ ИНИЦИАЛИЗАТОР
 // =======================================================
@@ -490,13 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initModalClose();
     updatePersistentBar();
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            if (window.pauseActiveTimer && appState.session.isRunning) {
-                window.pauseActiveTimer();
-            }
-        }
-    });
+    // БЛОК, КОТОРЫЙ СТАВИЛ ТАЙМЕР НА ПАУЗУ, БЫЛ УДАЛЕН ОТСЮДА
 
     document.querySelectorAll('.choice-group').forEach(group => {
         group.addEventListener('click', (e) => {
