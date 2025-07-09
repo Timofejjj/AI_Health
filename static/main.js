@@ -20,21 +20,19 @@ const appState = {
     audioCtx: null
 };
 
+// --- Вспомогательные функции для localStorage ---
 function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
 function setTimerState(state) { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
 function clearTimerState() { localStorage.removeItem(TIMER_STATE_KEY); }
 
+// --- Функции для модальных окон ---
 function showModal(id) {
     const modal = document.getElementById(id);
-    if (modal) {
-        modal.classList.add('visible');
-    }
+    if (modal) modal.classList.add('visible');
 }
 
 function hideModals() {
-    document.querySelectorAll('.modal-overlay.visible').forEach(m => {
-        m.classList.remove('visible');
-    });
+    document.querySelectorAll('.modal-overlay.visible').forEach(m => m.classList.remove('visible'));
 }
 
 function updatePersistentBar() {
@@ -53,9 +51,7 @@ function updatePersistentBar() {
     if (st && st.isActive && !document.querySelector('.timer-page')) {
         bar.classList.add('visible');
         bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
-
-        const href = `/timer/${currentUserId}?task=${encodeURIComponent(st.taskName || '')}`;
-        bar.querySelector('#return-to-timer-btn').href = href;
+        bar.querySelector('#return-to-timer-btn').href = `/timer/${currentUserId}?task=${encodeURIComponent(st.taskName || '')}`;
 
         const updateBarTime = () => {
             const duration = st.mode === 'work' ? (st.totalDuration || 25*60) : (st.breakDuration || 10*60);
@@ -70,10 +66,8 @@ function updatePersistentBar() {
             const seconds = displaySeconds % 60;
             bar.querySelector('.time-display').textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         };
-
         updateBarTime();
         bar.intervalId = setInterval(updateBarTime, 1000);
-
     } else {
         bar.classList.remove('visible');
     }
@@ -101,16 +95,21 @@ function logSession(data) {
         user_id: appState.userId,
         task_name: appState.session.taskName || 'N/A',
         location: appState.session.location,
-        feeling_start: appState.session.feeling_start,
+        feeling_start: data.feeling_start, // Передаем явно, может быть undefined
         ...data
     };
 
-    fetch('/api/log_session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sessionData),
-        keepalive: true
-    }).catch(error => console.error('Failed to log session:', error));
+    const blob = new Blob([JSON.stringify(sessionData)], { type: 'application/json' });
+    
+    if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/log_session', blob);
+    } else {
+        fetch('/api/log_session', {
+            method: 'POST',
+            body: blob,
+            keepalive: true
+        }).catch(error => console.error('Failed to log session with fetch:', error));
+    }
 }
 
 function initFabMenu() {
@@ -141,11 +140,16 @@ function initFabMenu() {
 
 function initModalClose() {
     document.getElementById('close-task-modal-btn')?.addEventListener('click', hideModals);
+    document.getElementById('close-start-session-modal-btn')?.addEventListener('click', hideModals);
 }
 
+// =======================================================
+//        ГЛАВНЫЙ МОДУЛЬ УПРАВЛЕНИЯ ТАЙМЕРОМ
+// =======================================================
 function initTimerPage() {
-    const params = new URLSearchParams(location.search);
+    let timerModule = {}; 
 
+    const params = new URLSearchParams(location.search);
     let taskNameFromUrl = params.get('task');
     let locationFromUrl = params.get('location');
     let feelingStartFromUrl = params.get('feeling_start');
@@ -160,34 +164,28 @@ function initTimerPage() {
     const startBreakBtn = document.getElementById('start-break-btn');
     const skipBreakBtn = document.getElementById('skip-break-btn');
     const forceEndBtn = document.getElementById('force-end-session-btn');
-
     const decreaseWorkBtn = document.getElementById('decrease-work-time-btn');
     const increaseWorkBtn = document.getElementById('increase-work-time-btn');
     const decreaseBreakBtn = document.getElementById('decrease-break-time-btn');
     const increaseBreakBtn = document.getElementById('increase-break-time-btn');
 
-    function saveCurrentState() {
-        setTimerState({
-            isActive: true,
-            ...appState.session
-        });
-    }
+    timerModule.saveCurrentState = () => {
+        setTimerState({ isActive: true, ...appState.session });
+    };
 
-    function tick() {
+    timerModule.tick = () => {
         if (!appState.session.isRunning) return;
-        let currentTotalElapsed = appState.session.elapsedSeconds;
-        if (appState.session.startTime) {
-            currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        }
         const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
+        let currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
+        
         if (currentTotalElapsed >= duration && !appState.session.completionSoundPlayed) {
             playSound();
             appState.session.completionSoundPlayed = true;
         }
-        updateUI();
+        timerModule.updateUI();
     };
 
-    function updateUI() {
+    timerModule.updateUI = () => {
         let currentTotalElapsed = Math.floor(appState.session.elapsedSeconds);
         if (appState.session.isRunning && appState.session.startTime) {
             currentTotalElapsed = Math.floor(appState.session.elapsedSeconds + (Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
@@ -215,19 +213,19 @@ function initTimerPage() {
             skipBreakBtn.textContent = appState.session.isRunning ? 'Завершить' : 'Пропустить';
         }
         updatePersistentBar();
-    }
+    };
 
-    function startTimer() {
+    timerModule.startTimer = () => {
         if (appState.session.isRunning) return;
         appState.session.isRunning = true;
         appState.session.startTime = new Date().toISOString();
         if (appState.timerInterval) clearInterval(appState.timerInterval);
-        appState.timerInterval = setInterval(tick, 1000);
-        saveCurrentState();
-        updateUI();
-    }
+        appState.timerInterval = setInterval(timerModule.tick, 1000);
+        timerModule.saveCurrentState();
+        timerModule.updateUI();
+    };
 
-    function pauseTimer() {
+    timerModule.pauseTimer = () => {
         if (!appState.session.isRunning) return;
         clearInterval(appState.timerInterval);
         appState.timerInterval = null;
@@ -235,30 +233,35 @@ function initTimerPage() {
         appState.session.elapsedSeconds += elapsedSinceLastStart;
         appState.session.isRunning = false;
         appState.session.startTime = null;
-        saveCurrentState();
-        updateUI();
-    }
+        timerModule.saveCurrentState();
+        timerModule.updateUI();
+    };
+    
+    window.pauseActiveTimer = timerModule.pauseTimer;
 
     function completeWorkSession(feeling_end) {
-        pauseTimer();
+        timerModule.pauseTimer();
         const finalState = appState.session;
         logSession({
             session_type: 'Работа',
             start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
             end_time: new Date().toISOString(),
             duration_seconds: finalState.elapsedSeconds,
+            feeling_start: finalState.feeling_start, // Передаем сохраненное чувство
             feeling_end: feeling_end,
         });
         appState.session.mode = 'break';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
-        saveCurrentState();
-        updateUI();
+        appState.session.feeling_start = null; // Очищаем чувство для следующей сессии
+        timerModule.saveCurrentState();
+        timerModule.updateUI();
     }
 
     function endWorkSessionWithPrompt() {
-        pauseTimer();
+        timerModule.pauseTimer();
         showModal('end-session-modal');
+        document.querySelectorAll('#end-session-modal .choice-btn').forEach(btn => btn.classList.remove('selected'));
         const feelingEndButtons = document.querySelectorAll('#feeling-end-group .choice-btn');
         feelingEndButtons.forEach(btn => {
             btn.onclick = () => {
@@ -269,26 +272,58 @@ function initTimerPage() {
         });
     }
 
+    function startWorkSessionWithPrompt() {
+        showModal('start-session-modal');
+        document.querySelectorAll('#start-session-modal .choice-btn').forEach(btn => btn.classList.remove('selected'));
+        const startBtn = document.getElementById('start-resumed-session-btn');
+
+        startBtn.onclick = () => {
+             const selectedFeeling = document.querySelector('#feeling-start-group-resumed .choice-btn.selected');
+             if (!selectedFeeling) {
+                 alert('Пожалуйста, выберите ваше состояние.');
+                 return;
+             }
+             appState.session.feeling_start = selectedFeeling.dataset.value;
+             hideModals();
+             timerModule.startTimer();
+        };
+    }
+
     function switchToWorkMode() {
-        pauseTimer();
+        timerModule.pauseTimer();
         if (appState.session.elapsedSeconds > 10) {
             logSession({
                 session_type: 'Перерыв',
-                task_name: 'Перерыв',
+                task_name: 'Перерыв', // task_name все еще нужен для лога
                 start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: appState.session.elapsedSeconds,
             });
         }
+        
         appState.session.mode = 'work';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
-        saveCurrentState();
-        updateUI();
+        timerModule.saveCurrentState();
+        timerModule.updateUI();
+        
+        startWorkSessionWithPrompt();
+    }
+    
+    function handleStartPauseClick() {
+        if (appState.session.isRunning) {
+            timerModule.pauseTimer();
+        } else {
+            if (appState.session.elapsedSeconds > 0) { // Это "продолжить"
+                startWorkSessionWithPrompt();
+            } else { // Это самый первый старт
+                timerModule.startTimer();
+            }
+        }
     }
 
     function forceEndSession() {
-        pauseTimer();
+        timerModule.pauseTimer();
         const finalState = appState.session;
         if (finalState.elapsedSeconds > 0) {
             logSession({
@@ -297,6 +332,7 @@ function initTimerPage() {
                 start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: finalState.elapsedSeconds,
+                feeling_start: finalState.feeling_start,
                 feeling_end: 'Принудительно завершено',
             });
         }
@@ -304,23 +340,17 @@ function initTimerPage() {
         window.location.href = `/dashboard/${appState.userId}`;
     }
 
-    startPauseBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
+    startPauseBtn.addEventListener('click', handleStartPauseClick);
     stopBtn.addEventListener('click', endWorkSessionWithPrompt);
-    startBreakBtn.addEventListener('click', () => appState.session.isRunning ? pauseTimer() : startTimer());
+    startBreakBtn.addEventListener('click', () => appState.session.isRunning ? timerModule.pauseTimer() : timerModule.startTimer());
     skipBreakBtn.addEventListener('click', switchToWorkMode);
     forceEndBtn.addEventListener('click', forceEndSession);
-
-    decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); updateUI(); });
-    increaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration += 60; updateUI(); });
-    decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); updateUI(); });
-    increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration += 60; updateUI(); });
-
-    document.querySelectorAll('.time-preset-btn').forEach(btn => btn.addEventListener('click', () => {
-        appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
-    }));
-    document.querySelectorAll('.break-preset-btn').forEach(btn => btn.addEventListener('click', () => {
-        appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; updateUI();
-    }));
+    decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); timerModule.updateUI(); });
+    increaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration += 60; timerModule.updateUI(); });
+    decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); timerModule.updateUI(); });
+    increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration += 60; timerModule.updateUI(); });
+    document.querySelectorAll('.time-preset-btn').forEach(btn => btn.addEventListener('click', () => { appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; timerModule.updateUI(); }));
+    document.querySelectorAll('.break-preset-btn').forEach(btn => btn.addEventListener('click', () => { appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; timerModule.updateUI(); }));
 
     const existingState = getTimerState();
     if (existingState && existingState.isActive) {
@@ -332,23 +362,18 @@ function initTimerPage() {
         }
         if (appState.session.isRunning) {
             if (appState.timerInterval) clearInterval(appState.timerInterval);
-            appState.timerInterval = setInterval(tick, 1000);
+            appState.timerInterval = setInterval(timerModule.tick, 1000);
         }
     } else if (taskNameFromUrl) {
         appState.session.taskName = taskNameFromUrl;
         appState.session.location = locationFromUrl;
         appState.session.feeling_start = feelingStartFromUrl;
-        saveCurrentState();
+        timerModule.saveCurrentState();
     }
-
     taskTitleHeader.textContent = appState.session.taskName;
-    updateUI();
+    timerModule.updateUI();
 }
 
-
-// =======================================================
-//        НОВЫЙ КОД ДЛЯ СТРАНИЦЫ ОТЧЕТОВ
-// =======================================================
 async function initDynamicsPage() {
     const userId = document.body.dataset.userId;
     if (!userId) return;
@@ -363,11 +388,9 @@ async function initDynamicsPage() {
         const response = await fetch(`/api/dynamics_data/${userId}`);
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
-
         renderCalendars(data.calendars, calendarsContainer);
         renderDailyChart(data.activity_by_day, data.total_weeks, dailyChartCanvas, weeksFilter);
         renderHourlyChart(data.activity_by_hour, hourlyChartCanvas, dayPicker);
-
     } catch (error) {
         calendarsContainer.innerHTML = `<p style="color: red;">Не удалось загрузить данные: ${error.message}</p>`;
         console.error('Error fetching dynamics data:', error);
@@ -380,46 +403,29 @@ function renderCalendars(calendarsData, container) {
         container.innerHTML = '<p>Нет данных по задачам для отображения.</p>';
         return;
     }
-
     const today = new Date();
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
-
     for (const taskName in calendarsData) {
         const activeDays = calendarsData[taskName];
         const calendarEl = document.createElement('div');
         calendarEl.className = 'calendar';
-        calendarEl.innerHTML = `
-            <div class="calendar-header">${taskName}</div>
-            <div class="calendar-body"></div>
-        `;
+        calendarEl.innerHTML = `<div class="calendar-header">${taskName}</div><div class="calendar-body"></div>`;
         container.appendChild(calendarEl);
-        
         const calendarBody = calendarEl.querySelector('.calendar-body');
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun, 1=Mon
-        const adjustedFirstDay = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1; // 0=Mon
-
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+        const adjustedFirstDay = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
         const дниНедели = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-        дниНедели.forEach(day => {
-            calendarBody.innerHTML += `<div class="calendar-day header">${day}</div>`;
-        });
-        
-        for (let i = 0; i < adjustedFirstDay; i++) {
-            calendarBody.innerHTML += `<div class="calendar-day"></div>`;
-        }
-        
+        дниНедели.forEach(day => { calendarBody.innerHTML += `<div class="calendar-day header">${day}</div>`; });
+        for (let i = 0; i < adjustedFirstDay; i++) { calendarBody.innerHTML += `<div class="calendar-day"></div>`; }
         for (let day = 1; day <= daysInMonth; day++) {
             const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day';
             dayEl.textContent = day;
-            if (activeDays.includes(dateStr)) {
-                dayEl.classList.add('active');
-            }
-             if (day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear()) {
-                dayEl.classList.add('today');
-            }
+            if (activeDays.includes(dateStr)) dayEl.classList.add('active');
+            if (day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear()) dayEl.classList.add('today');
             calendarBody.appendChild(dayEl);
         }
     }
@@ -428,11 +434,8 @@ function renderCalendars(calendarsData, container) {
 function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     const labels = dailyData.labels;
     const data = dailyData.data;
-
-    // Populate filter
     filter.innerHTML = '';
-    const weekOptions = [1, 2, 4];
-    weekOptions.forEach(w => {
+    [1, 2, 4].forEach(w => {
         if (totalWeeks >= w) {
             const option = document.createElement('option');
             option.value = w * 7;
@@ -445,30 +448,9 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     allTimeOption.textContent = 'Все время';
     allTimeOption.selected = true;
     filter.appendChild(allTimeOption);
-
-    const chart = new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Часы работы',
-                data: data,
-                backgroundColor: 'rgba(0, 122, 255, 0.6)',
-                borderColor: 'rgba(0, 122, 255, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Часы' } },
-                x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } }
-            },
-            plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } }
-        }
-    });
-
+    const chart = new Chart(canvas, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Часы работы', data: data, backgroundColor: 'rgba(0, 122, 255, 0.6)', borderColor: 'rgba(0, 122, 255, 1)', borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } }, x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } } } });
     filter.addEventListener('change', (e) => {
-        const daysToShow = parseInt(e.target.value, 10);
+        const daysToShow = Math.min(parseInt(e.target.value, 10), labels.length);
         const startDate = new Date(labels[labels.length - daysToShow]);
         chart.options.scales.x.min = startDate.getTime();
         chart.options.scales.x.max = new Date(labels[labels.length - 1]).getTime();
@@ -477,46 +459,22 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
     filter.dispatchEvent(new Event('change'));
 }
 
-
 function renderHourlyChart(hourlyData, canvas, picker) {
     const todayStr = new Date().toISOString().split('T')[0];
     picker.value = todayStr;
-    
     let chart = null;
-
     function updateChart(selectedDate) {
         const dayData = hourlyData.filter(d => d.date_str === selectedDate);
         const hours = Array(24).fill(0);
-        dayData.forEach(d => {
-            hours[d.hour] += d.duration_hours;
-        });
-
-        const chartData = {
-            labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-            datasets: [{
-                label: 'Часы работы',
-                data: hours,
-                backgroundColor: 'rgba(52, 199, 89, 0.6)',
-                borderColor: 'rgba(52, 199, 89, 1)',
-                borderWidth: 1
-            }]
-        };
-
+        dayData.forEach(d => { hours[d.hour] += d.duration_hours; });
+        const chartData = { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: 'Часы работы', data: hours, backgroundColor: 'rgba(52, 199, 89, 0.6)', borderColor: 'rgba(52, 199, 89, 1)', borderWidth: 1 }] };
         if (chart) {
             chart.data = chartData;
             chart.update();
         } else {
-            chart = new Chart(canvas, {
-                type: 'bar',
-                data: chartData,
-                options: {
-                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } } },
-                    plugins: { legend: { display: false } }
-                }
-            });
+            chart = new Chart(canvas, { type: 'bar', data: chartData, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } } }, plugins: { legend: { display: false } } } });
         }
     }
-
     picker.addEventListener('change', (e) => updateChart(e.target.value));
     updateChart(todayStr);
 }
@@ -531,6 +489,14 @@ document.addEventListener('DOMContentLoaded', () => {
     initFabMenu();
     initModalClose();
     updatePersistentBar();
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            if (window.pauseActiveTimer && appState.session.isRunning) {
+                window.pauseActiveTimer();
+            }
+        }
+    });
 
     document.querySelectorAll('.choice-group').forEach(group => {
         group.addEventListener('click', (e) => {
@@ -548,12 +514,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const taskName = document.getElementById('task-name-input').value.trim();
             const location = document.querySelector('#location-group .choice-btn.selected')?.dataset.value;
             const feeling_start = document.querySelector('#feeling-start-group .choice-btn.selected')?.dataset.value;
-
             if (!taskName || !location || !feeling_start) {
                 alert('Пожалуйста, заполните все поля.');
                 return;
             }
-
             if (appState.userId) {
                 hideModals();
                 clearTimerState();
@@ -566,7 +530,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('.timer-page')) {
         initTimerPage();
     }
-    // ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ЗДЕСЬ
     if (document.querySelector('.dynamics-page')) {
         initDynamicsPage();
     }
