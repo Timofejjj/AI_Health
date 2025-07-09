@@ -7,12 +7,12 @@
         <a href="{{ url_for('dashboard', user_id=user_id) }}" class="back-button">← Назад</a>
         <h1>Все сохраненные мысли</h1>
     </header>
-    
+
     <section class="thought-list">
         {% if thoughts %}
             {% for thought in thoughts %}
             <div class="list-item">
-                <!-- ИСПОЛЬЗУЕМ НОВЫЙ ФИЛЬТР ДЛЯ КОРРЕКТНОГО ОТОБРАЖЕНИЯ ВРЕМЕНИ -->
+                <!-- Используем фильтр для корректного отображения времени в локальной таймзоне -->
                 <div class="meta">{{ thought.timestamp | format_datetime }}</div>
                 <div class="content">{{ thought.content }}</div>
             </div>
