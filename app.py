@@ -390,12 +390,17 @@ def get_dynamics_data(user_id):
         all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
         daily_data = daily.tolist()
 
-        work_sessions['start_time'] = work_sessions['start_time_local'].astype(str)
-        work_sessions['end_time'] = work_sessions['end_time_local'].astype(str)
-
-        work_sessions_list = work_sessions[[task_col, 'start_time', 'end_time']].rename(columns={
-            task_col: 'task_name'
-        }).to_dict('records')
+        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+        # Мы готовим DataFrame для преобразования в словарь, но не меняем типы данных на строки
+        sessions_for_json = work_sessions[[task_col, 'start_time_local', 'end_time_local']].copy()
+        sessions_for_json.rename(columns={
+            task_col: 'task_name',
+            'start_time_local': 'start_time',
+            'end_time_local': 'end_time'
+        }, inplace=True)
+        
+        # Преобразование в словарь записей происходит здесь, сохраняя объекты datetime
+        work_sessions_list = sessions_for_json.to_dict('records')
 
         return jsonify({
             'calendars': calendars,
