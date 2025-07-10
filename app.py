@@ -36,32 +36,17 @@ try:
 except locale.Error:
     print("Предупреждение: Локаль 'ru_RU.UTF-8' не найдена.")
 
-# --- ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
-worksheet_thoughts = None
-worksheet_analyses = None
-worksheet_timer_logs = None
-worksheet_users = None
+# --- ИНИЦИАЛИЗАЦИЯ ГЛОБАЛЬНЫХ НАСТРОЕК ---
 gemini_model = None
+GOOGLE_CREDS_INFO = None
+GOOGLE_SHEET_ID = None
 
 try:
-    google_creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
-    sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    if not google_creds_json or not sheet_id:
+    GOOGLE_CREDS_INFO = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
+    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+    if not GOOGLE_CREDS_INFO or not GOOGLE_SHEET_ID:
         raise ValueError("Переменные окружения GOOGLE_CREDENTIALS_JSON и GOOGLE_SHEET_ID должны быть установлены.")
-    creds_info = json.loads(google_creds_json)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-    gc = gspread.authorize(creds)
-    spreadsheet = gc.open_by_key(sheet_id)
-    worksheet_thoughts = spreadsheet.worksheet("thoughts")
-    worksheet_analyses = spreadsheet.worksheet("analyses")
-    worksheet_timer_logs = spreadsheet.worksheet("timer_logs")
-    worksheet_users = spreadsheet.worksheet("users")
-    print("✅ Успешное подключение к Google Sheets.")
-except Exception as e:
-    print(f"❌ ОШИБКА: Не удалось подключиться к Google Sheets: {e}")
-
-try:
+    
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     if gemini_api_key:
         genai.configure(api_key=gemini_api_key)
@@ -70,22 +55,50 @@ try:
     else:
         print("⚠️  Предупреждение: GEMINI_API_KEY не установлен. Анализ будет недоступен.")
 except Exception as e:
-    print(f"❌ ОШИБКА: Не удалось настроить Gemini: {e}")
+    print(f"❌ КРИТИЧЕСКАЯ ОШИБКА при инициализации конфигурации: {e}")
+    GOOGLE_CREDS_INFO = None
+    GOOGLE_SHEET_ID = None
 
-# --- ФУНКЦИИ-ПОМОЩНИКИ ---
+# --- ФУНКЦИИ-ПОМОЩНИКИ ДЛЯ ДОСТУПА К GOOGLE SHEETS ---
+def get_gspread_client():
+    """Создает и возвращает свежий, авторизованный клиент gspread."""
+    if not GOOGLE_CREDS_INFO:
+        raise Exception("Учетные данные Google не были загружены при старте приложения.")
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(GOOGLE_CREDS_INFO, scopes=scopes)
+    return gspread.authorize(creds)
+
+def get_worksheet(worksheet_name):
+    """Безопасно получает доступ к указанному листу в таблице."""
+    try:
+        gc = get_gspread_client()
+        spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
+        return spreadsheet.worksheet(worksheet_name)
+    except Exception as e:
+        print(f"❌ Ошибка доступа к листу '{worksheet_name}': {e}")
+        traceback.print_exc()
+        return None
+
+# --- ОБЩИЕ ФУНКЦИИ-ПОМОЩНИКИ ---
 def get_dynamic_greeting():
     hour = (datetime.now(timezone.utc).hour + 3) % 24
     if 4 <= hour < 12: return "Доброе утро"
     if 12 <= hour < 17: return "Добрый день"
     return "Добрый вечер"
 
-def get_data_from_sheet(worksheet, user_id):
-    if not worksheet: return []
+def get_data_from_sheet(worksheet_name, user_id):
+    """Получает данные для пользователя из указанного листа."""
+    worksheet = get_worksheet(worksheet_name)
+    if not worksheet:
+        print(f"Не удалось получить данные: лист '{worksheet_name}' недоступен.")
+        return []
     try:
         records = worksheet.get_all_records()
+        if not user_id: # Если user_id не предоставлен, возвращаем все записи
+            return records
         return [r for r in records if str(r.get('user_id')) == str(user_id)]
     except Exception as e:
-        print(f"Ошибка получения данных из {worksheet.title}: {e}")
+        print(f"Ошибка чтения данных из листа {worksheet_name}: {e}")
         return []
 
 def normalize_task_name_with_ai(new_task_name, existing_tasks):
@@ -112,6 +125,8 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
     except Exception as e:
         print(f"Ошибка нормализации с помощью ИИ: {e}")
         return new_task_name
+
+# --- ФУНКЦИИ ДЛЯ АНАЛИТИКИ ---
 
 def get_last_analysis_timestamp_utc(analyses):
     if not analyses: return None
@@ -245,14 +260,19 @@ def login():
     if request.method == 'POST':
         user_id = request.form.get('user_id')
         password = request.form.get('password')
-        if not worksheet_users:
-            flash("Сервис пользователей недоступен.", "danger")
+        
+        all_users = get_data_from_sheet("users", "") # Получаем всех пользователей
+        if not all_users:
+            flash("Сервис аутентификации временно недоступен.", "danger")
             return render_template('login.html')
-        users = worksheet_users.get_all_records()
-        for user in users:
-            if str(user.get('user_id')) == user_id and str(user.get('password')) == password:
-                return redirect(url_for('dashboard', user_id=user_id))
-        flash("Неверный ID или пароль.", "danger")
+
+        user_found = next((user for user in all_users if str(user.get('user_id')) == user_id and str(user.get('password')) == password), None)
+
+        if user_found:
+            return redirect(url_for('dashboard', user_id=user_id))
+        else:
+            flash("Неверный ID или пароль.", "danger")
+
     return render_template('login.html')
 
 @app.route('/dashboard/<user_id>', methods=['GET', 'POST'])
@@ -263,9 +283,9 @@ def dashboard(user_id):
         action = request.form.get('action')
         if action == 'analyze':
             try:
-                thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
-                timers = get_data_from_sheet(worksheet_timer_logs, user_id)
-                analyses = get_data_from_sheet(worksheet_analyses, user_id)
+                thoughts = get_data_from_sheet("thoughts", user_id)
+                timers = get_data_from_sheet("timer_logs", user_id)
+                analyses = get_data_from_sheet("analyses", user_id)
                 last_ts_utc = get_last_analysis_timestamp_utc(analyses)
                 new_thoughts = get_new_data(thoughts, last_ts_utc, 'timestamp', is_utc=True)
                 new_timers = get_new_data(timers, last_ts_utc, 'start_time', is_utc=False)
@@ -278,29 +298,39 @@ def dashboard(user_id):
                             all_ts_utc.append(local_time.astimezone(timezone.utc))
                     if all_ts_utc:
                         latest_utc = max(all_ts_utc)
-                        worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
+                        worksheet_analyses = get_worksheet("analyses")
+                        if worksheet_analyses:
+                            worksheet_analyses.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), latest_utc.isoformat(), analysis_result])
+                        else:
+                            flash("Ошибка записи отчета: сервис недоступен.", "danger")
                 else: flash("Нет новых данных для анализа.", "success")
             except Exception as e:
                 print(f"Критическая ошибка при анализе: {e}")
                 flash(f"Произошла ошибка при анализе: {e}", "danger")
                 return redirect(url_for('dashboard', user_id=user_id))
-        else:
+        
+        elif action == 'save_thought':
             thought = request.form.get('thought')
             if thought:
-                worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
-                flash("Мысль сохранена!", "success")
+                worksheet_thoughts = get_worksheet("thoughts")
+                if worksheet_thoughts:
+                    worksheet_thoughts.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
+                    flash("Мысль сохранена!", "success")
+                else:
+                    flash("Ошибка: не удалось сохранить мысль, сервис недоступен.", "danger")
             return redirect(url_for('dashboard', user_id=user_id))
+    
     return render_template('dashboard.html', user_id=user_id, greeting=greeting, analysis_result=analysis_result)
 
 @app.route('/thoughts/<user_id>')
 def thoughts_list(user_id):
-    thoughts = get_data_from_sheet(worksheet_thoughts, user_id)
+    thoughts = get_data_from_sheet("thoughts", user_id)
     thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return render_template('thoughts.html', user_id=user_id, thoughts=thoughts)
 
 @app.route('/analyses/<user_id>')
 def analyses_list(user_id):
-    analyses = get_data_from_sheet(worksheet_analyses, user_id)
+    analyses = get_data_from_sheet("analyses", user_id)
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return render_template('analyses.html', user_id=user_id, analyses=analyses)
 
@@ -333,7 +363,7 @@ def log_timer_session():
         
         normalized_task = task_name_raw
         if session_type == 'Работа':
-            all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
+            all_user_sessions = get_data_from_sheet("timer_logs", user_id)
             existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
             normalized_task = normalize_task_name_with_ai(task_name_raw, existing_task_names)
         
@@ -342,6 +372,10 @@ def log_timer_session():
         feeling_end = data.get('feeling_end', '')
         location = data.get('location', '')
         
+        worksheet_timer_logs = get_worksheet("timer_logs")
+        if not worksheet_timer_logs:
+             return jsonify({'status': 'error', 'message': 'Не удалось получить доступ к таблице логов'}), 500
+
         row = [user_id, task_name_raw, normalized_task, session_type, location, feeling_start, feeling_end, start_time_str, end_time_str, duration]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
@@ -353,7 +387,7 @@ def log_timer_session():
 @app.route('/api/dynamics_data/<user_id>')
 def get_dynamics_data(user_id):
     try:
-        records = get_data_from_sheet(worksheet_timer_logs, user_id)
+        records = get_data_from_sheet("timer_logs", user_id)
         empty_response = {'calendars': {}, 'total_weeks': 1, 'activity_by_day': {'labels': [], 'data': []}, 'work_sessions_list': []}
         if not records: return jsonify(empty_response)
         
@@ -375,7 +409,6 @@ def get_dynamics_data(user_id):
         
         work_sessions = df[df['session_type'] == 'Работа'].copy()
 
-        # Данные для календарей и графика дневной активности (только по рабочим сессиям)
         calendars = {}
         daily_data = []
         all_days_index = []
@@ -400,7 +433,6 @@ def get_dynamics_data(user_id):
             all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
             daily_data = daily.tolist()
 
-        # Данные для Gantt-графика (ВСЕ сессии: работа и перерывы)
         gantt_df = df.copy()
         
         task_col_for_gantt = 'task_name_normalized' if 'task_name_normalized' in gantt_df.columns and not gantt_df['task_name_normalized'].isnull().all() else 'task_name_raw'
