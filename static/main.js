@@ -470,104 +470,144 @@ function renderHourlyChart(workSessions, canvas, picker) {
     const taskColorMap = new Map();
 
     function updateChart(selectedDateStr) {
+        if (chart) {
+            chart.destroy();
+            chart = null;
+        }
+
         const dayStart = new Date(`${selectedDateStr}T00:00:00`);
         const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
         
-        // **ИСПРАВЛЕННЫЙ ФИЛЬТР**
         const daySessions = workSessions.filter(s => {
             if (!s.start_time || !s.end_time) return false;
             const sessionStart = new Date(s.start_time);
             const sessionEnd = new Date(s.end_time);
-            // Проверяем, что интервал сессии пересекается с выбранным днём
             return sessionStart < dayEnd && sessionEnd > dayStart;
         });
 
-        // Получаем уникальные задачи для оси Y
-        const yLabels = [...new Set(daySessions.map(s => s.task_name))];
+        if (daySessions.length === 0) {
+            canvas.style.display = 'none';
+            // Можно показать сообщение, что данных нет
+            const noDataEl = document.getElementById('hourly-chart-no-data');
+            if (!noDataEl) {
+                const p = document.createElement('p');
+                p.id = 'hourly-chart-no-data';
+                p.textContent = 'Нет данных о работе за этот день.';
+                canvas.parentNode.appendChild(p);
+            } else {
+                noDataEl.style.display = 'block';
+            }
+            return;
+        } else {
+            canvas.style.display = 'block';
+            const noDataEl = document.getElementById('hourly-chart-no-data');
+            if(noDataEl) noDataEl.style.display = 'none';
+        }
 
-        // Каждая сессия - это отдельный набор данных, чтобы они рисовались независимо
+        const yLabels = [...new Set(daySessions.map(s => s.task_name))].sort();
+
         const datasets = daySessions.map(session => {
-            // Назначаем постоянный цвет для каждой задачи
             if (!taskColorMap.has(session.task_name)) {
                 taskColorMap.set(session.task_name, colorPalette[taskColorMap.size % colorPalette.length]);
             }
             const color = taskColorMap.get(session.task_name);
 
             return {
-                label: session.task_name, // Для тултипа
+                label: session.task_name, 
                 data: [{
                     x: [new Date(session.start_time), new Date(session.end_time)],
                     y: session.task_name
                 }],
                 backgroundColor: color,
-                barPercentage: 0.8,
-                categoryPercentage: 0.9,
+                borderColor: color.replace('0.8', '1'),
+                borderWidth: 1,
+                barPercentage: 0.6,
+                categoryPercentage: 0.7,
+                borderSkipped: false,
+                borderRadius: 10,
             };
         });
         
         const chartData = {
-            labels: yLabels, // Задаем метки для оси Y
+            labels: yLabels,
             datasets: datasets
         };
 
-        if (chart) {
-            chart.data = chartData;
-            chart.options.scales.x.min = dayStart;
-            chart.options.scales.x.max = dayEnd;
-            chart.options.scales.y.labels = yLabels; // Обновляем метки Y
-            chart.update();
-        } else {
-            chart = new Chart(canvas, {
-                type: 'bar',
-                data: chartData,
-                options: {
-                    indexAxis: 'y', // Делаем график горизонтальным
-                    responsive: true,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            min: dayStart.getTime(),
-                            max: dayEnd.getTime(),
-                            time: {
-                                unit: 'hour',
-                                displayFormats: { hour: 'HH:mm' }
-                            },
-                            position: 'bottom',
-                            title: { display: true, text: 'Время дня' }
+        chart = new Chart(canvas, {
+            type: 'bar',
+            data: chartData,
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: dayStart.getTime(),
+                        max: dayEnd.getTime(),
+                        time: {
+                            unit: 'hour',
+                            displayFormats: { hour: 'HH:mm' }
                         },
-                        y: {
-                           title: { display: true, text: 'Задачи' }
+                        position: 'bottom',
+                        title: { display: true, text: 'Время дня' },
+                        grid: {
+                            color: '#e0e0e0'
                         }
                     },
-                    plugins: {
-                        legend: {
-                             display: false // Легенда бесполезна, т.к. датасетов много
-                        },
-                        tooltip: {
-                            callbacks: {
-                                title: (context) => context[0]?.dataset.label || '',
-                                label: (context) => {
-                                    const start = new Date(context.raw.x[0]);
-                                    const end = new Date(context.raw.x[1]);
-                                    const durationMs = end - start;
-                                    const durationMins = Math.round(durationMs / 60000);
-                                    const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                                    const endTime = end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                                    return `Период: ${startTime} - ${endTime} (${durationMins} мин)`;
+                    y: {
+                       grid: {
+                           display: false
+                       }
+                    }
+                },
+                plugins: {
+                    legend: {
+                         display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0]?.dataset.label || '',
+                            label: (context) => {
+                                const session = daySessions.find(s => 
+                                    new Date(s.start_time).getTime() === context.raw.x[0].getTime() &&
+                                    new Date(s.end_time).getTime() === context.raw.x[1].getTime() &&
+                                    s.task_name === context.raw.y
+                                );
+
+                                const start = new Date(context.raw.x[0]);
+                                const end = new Date(context.raw.x[1]);
+                                const durationMs = end - start;
+                                const durationMins = Math.round(durationMs / 60000);
+                                const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                                const endTime = end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                                
+                                let tooltipText = [`Период: ${startTime} - ${endTime} (${durationMins} мин)`];
+                                if (session?.feeling_start) {
+                                    tooltipText.push(`Начало: ${session.feeling_start}`);
                                 }
+                                if (session?.feeling_end) {
+                                    tooltipText.push(`Конец: ${session.feeling_end}`);
+                                }
+                                return tooltipText;
                             }
                         }
                     }
                 }
-            });
-        }
+            }
+        });
+        // Адаптивная высота графика
+        const newHeight = Math.max(250, yLabels.length * 60 + 80); // 60px на задачу + 80px на оси/отступы
+        canvas.parentNode.style.height = `${newHeight}px`;
     }
     
     const todayStr = new Date().toISOString().split('T')[0];
     picker.value = todayStr;
+    picker.max = todayStr;
     picker.addEventListener('change', (e) => updateChart(e.target.value));
     updateChart(todayStr);
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
     appState.userId = document.body.dataset.userId;
