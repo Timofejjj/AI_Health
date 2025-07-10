@@ -93,12 +93,10 @@ function playSound() {
 function logSession(data) {
     const sessionData = {
         user_id: appState.userId,
-        task_name: appState.session.taskName || 'N/A',
-        location: appState.session.location,
-        feeling_start: data.feeling_start, 
+        location: appState.session.location, // Get from state
         ...data
     };
-
+    
     const blob = new Blob([JSON.stringify(sessionData)], { type: 'application/json' });
     
     if (navigator.sendBeacon) {
@@ -237,6 +235,7 @@ function initTimerPage() {
         const finalState = appState.session;
         logSession({
             session_type: 'Работа',
+            task_name: finalState.taskName,
             start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
             end_time: new Date().toISOString(),
             duration_seconds: finalState.elapsedSeconds,
@@ -286,7 +285,7 @@ function initTimerPage() {
         if (appState.session.elapsedSeconds > 10) {
             logSession({
                 session_type: 'Перерыв',
-                task_name: 'Перерыв', 
+                task_name: appState.session.taskName, // Используем имя текущей задачи
                 start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: appState.session.elapsedSeconds,
@@ -318,7 +317,7 @@ function initTimerPage() {
         if (finalState.elapsedSeconds > 0) {
             logSession({
                 session_type: finalState.mode === 'work' ? 'Работа' : 'Перерыв',
-                task_name: finalState.mode === 'work' ? finalState.taskName : 'Перерыв',
+                task_name: finalState.taskName, // Всегда используем имя задачи из состояния
                 start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: finalState.elapsedSeconds,
@@ -462,13 +461,13 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
 function renderHourlyChart(allSessions, canvas, picker) {
     let chart = null;
     const colorPalette = [
-        'rgba(54, 162, 235, 0.85)',  // Blue
-        'rgba(75, 192, 192, 0.85)',  // Green
-        'rgba(255, 206, 86, 0.85)', // Yellow
-        'rgba(255, 99, 132, 0.85)',   // Red
-        'rgba(255, 159, 64, 0.85)'  // Orange
+        'rgba(14, 187, 242, 0.85)',  // Light Blue
+        'rgba(46, 204, 113, 0.85)',  // Green
+        'rgba(255, 206, 86, 0.85)',  // Yellow
+        'rgba(231, 76, 60, 0.85)',   // Red
+        'rgba(255, 159, 64, 0.85)'   // Orange
     ];
-    const breakColor = 'rgba(153, 102, 255, 0.7)'; // Purple for breaks
+    const breakColor = 'rgba(155, 89, 182, 0.8)'; // Purple for breaks
     const taskColorMap = new Map();
 
     function updateChart(selectedDateStr) {
@@ -498,7 +497,6 @@ function renderHourlyChart(allSessions, canvas, picker) {
             } else {
                 noDataEl.style.display = 'block';
             }
-            // Убедимся что контейнер графика не занимает место
             canvas.parentNode.style.height = '50px';
             return;
         } else {
@@ -506,28 +504,24 @@ function renderHourlyChart(allSessions, canvas, picker) {
             if (noDataEl) noDataEl.style.display = 'none';
         }
 
-        const yLabels = [...new Set(daySessions.map(s => s.task_name))].sort((a, b) => {
-            if (a === 'Перерыв') return 1; // "Перерыв" всегда внизу
-            if (b === 'Перерыв') return -1;
-            return a.localeCompare(b); // Остальные по алфавиту
-        });
+        const yLabels = [...new Set(daySessions.map(s => s.task_name))].sort();
 
         const datasets = daySessions.map(session => {
             let color, barPercentage, categoryPercentage, borderRadius;
 
             if (session.session_type === 'Перерыв') {
                 color = breakColor;
-                barPercentage = 0.35; // Делаем перерывы тоньше
-                categoryPercentage = 0.6;
-                borderRadius = 8;
+                barPercentage = 0.4; 
+                categoryPercentage = 0.8;
+                borderRadius = 10;
             } else { // Это рабочая сессия
                 if (!taskColorMap.has(session.task_name)) {
                     taskColorMap.set(session.task_name, colorPalette[taskColorMap.size % colorPalette.length]);
                 }
                 color = taskColorMap.get(session.task_name);
-                barPercentage = 0.5; // Стандартная толщина для работы
-                categoryPercentage = 0.7;
-                borderRadius = 12; // Больше скругление для работы
+                barPercentage = 0.6; 
+                categoryPercentage = 0.8;
+                borderRadius = 15;
             }
 
             return {
@@ -537,8 +531,6 @@ function renderHourlyChart(allSessions, canvas, picker) {
                     y: session.task_name
                 }],
                 backgroundColor: color,
-                borderColor: color.replace(/0\.\d+\)/, '1)'),
-                borderWidth: 1,
                 borderSkipped: false,
                 borderRadius: borderRadius,
                 barPercentage: barPercentage,
@@ -569,15 +561,24 @@ function renderHourlyChart(allSessions, canvas, picker) {
                         },
                         position: 'bottom',
                         grid: {
-                            color: '#eee'
+                            color: '#f0f0f0'
                         },
                         ticks: {
-                            color: '#666'
+                            color: '#666',
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 12
                         }
                     },
                     y: {
+                       stacked: true, // Позволяет барам располагаться ближе, если они не пересекаются
                        grid: {
-                           display: false
+                           display: true,
+                           drawBorder: false,
+                           color: '#f0f0f0',
+                           lineWidth: 1,
+                           drawTicks: false
                        },
                        ticks: {
                            color: '#333'
@@ -590,7 +591,13 @@ function renderHourlyChart(allSessions, canvas, picker) {
                     },
                     tooltip: {
                         callbacks: {
-                            title: (context) => context[0]?.dataset.label || '',
+                            title: (context) => {
+                                 const session = daySessions.find(s => 
+                                    new Date(s.start_time).getTime() === context[0].raw.x[0].getTime() &&
+                                    s.task_name === context[0].raw.y
+                                );
+                                return session?.session_type === 'Перерыв' ? 'Перерыв' : context[0]?.dataset.label;
+                            },
                             label: (context) => {
                                 const session = daySessions.find(s => 
                                     new Date(s.start_time).getTime() === context.raw.x[0].getTime() &&
@@ -605,14 +612,14 @@ function renderHourlyChart(allSessions, canvas, picker) {
                                 const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
                                 const endTime = end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
                                 
-                                let tooltipText = [`Период: ${startTime} - ${endTime} (${durationMins} мин)`];
+                                let tooltipText = [`${startTime} - ${endTime} (${durationMins} мин)`];
                                 
                                 if (session?.session_type === 'Работа') {
                                     if (session?.feeling_start) {
-                                        tooltipText.push(`Начало: ${session.feeling_start}`);
+                                        tooltipText.push(`  → Начало: ${session.feeling_start}`);
                                     }
                                     if (session?.feeling_end) {
-                                        tooltipText.push(`Конец: ${session.feeling_end}`);
+                                        tooltipText.push(`  → Конец: ${session.feeling_end}`);
                                     }
                                 }
                                 return tooltipText;
@@ -623,7 +630,7 @@ function renderHourlyChart(allSessions, canvas, picker) {
             }
         });
         
-        const newHeight = Math.max(250, yLabels.length * 55 + 80);
+        const newHeight = Math.max(250, yLabels.length * 70 + 80);
         canvas.parentNode.style.height = `${newHeight}px`;
     }
     
