@@ -323,27 +323,31 @@ def log_timer_session():
     try:
         user_id = str(data['user_id'])
         session_type = data.get('session_type', '')
-        new_task_name = str(data['task_name'])
+        task_name_raw = str(data['task_name'])
         start_time_utc = parser.isoparse(data['start_time'])
         end_time_utc = parser.isoparse(data['end_time'])
         start_time_local = start_time_utc.astimezone(MOSCOW_TZ)
         end_time_local = end_time_utc.astimezone(MOSCOW_TZ)
         start_time_str = start_time_local.strftime('%Y-%m-%d %H:%M:%S')
         end_time_str = end_time_local.strftime('%Y-%m-%d %H:%M:%S')
-        normalized_task = new_task_name
+        
+        normalized_task = task_name_raw
         if session_type == 'Работа':
             all_user_sessions = get_data_from_sheet(worksheet_timer_logs, user_id)
             existing_task_names = [row.get('task_name_raw') for row in all_user_sessions if row.get('task_name_raw')]
-            normalized_task = normalize_task_name_with_ai(new_task_name, existing_task_names)
-        elif session_type == 'Перерыв':
-            normalized_task = 'Перерыв'
+            normalized_task = normalize_task_name_with_ai(task_name_raw, existing_task_names)
+        
         duration = int(data['duration_seconds'])
-        feeling_start = data.get('feeling_start')
-        row = [user_id, new_task_name, normalized_task, session_type, data.get('location', ''), feeling_start, data.get('feeling_end', ''), start_time_str, end_time_str, duration]
+        feeling_start = data.get('feeling_start', '')
+        feeling_end = data.get('feeling_end', '')
+        location = data.get('location', '')
+        
+        row = [user_id, task_name_raw, normalized_task, session_type, location, feeling_start, feeling_end, start_time_str, end_time_str, duration]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
     except Exception as e:
         print(f"Ошибка сохранения сессии: {e}")
+        traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/dynamics_data/<user_id>')
@@ -358,7 +362,7 @@ def get_dynamics_data(user_id):
 
         required_cols = ['start_time', 'end_time', 'session_type', 'duration_seconds']
         for col in required_cols:
-            if col not in df.columns:
+            if col not in df.columns or df[col].isnull().all():
                 return jsonify(empty_response)
 
         df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
@@ -371,19 +375,20 @@ def get_dynamics_data(user_id):
         
         work_sessions = df[df['session_type'] == 'Работа'].copy()
 
+        # Данные для календарей и графика дневной активности (только по рабочим сессиям)
         calendars = {}
         daily_data = []
         all_days_index = []
         weeks = 1
         if not work_sessions.empty:
             task_col = 'task_name_normalized' if 'task_name_normalized' in work_sessions.columns and not work_sessions['task_name_normalized'].isnull().all() else 'task_name_raw'
-            if task_col not in work_sessions.columns: work_sessions.loc[:, task_col] = "Без названия"
+            if task_col not in work_sessions.columns: work_sessions[task_col] = "Без названия"
             work_sessions[task_col] = work_sessions[task_col].fillna('Без названия')
 
             calendars = {t: work_sessions[work_sessions[task_col]==t]['start_time_local'].dt.strftime('%Y-%m-%d').unique().tolist() for t in work_sessions[task_col].unique()}
             
-            work_sessions.loc[:, 'date'] = work_sessions['start_time_local'].dt.date
-            work_sessions.loc[:, 'duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
+            work_sessions['date'] = work_sessions['start_time_local'].dt.date
+            work_sessions['duration_hours'] = pd.to_numeric(work_sessions['duration_seconds'], errors='coerce').fillna(0) / 3600
             
             first_date = work_sessions['start_time_local'].min().date()
             last_date = datetime.now(MOSCOW_TZ).date()
@@ -395,28 +400,22 @@ def get_dynamics_data(user_id):
             all_days_index = [d.strftime('%Y-%m-%d') for d in daily.index]
             daily_data = daily.tolist()
 
+        # Данные для Gantt-графика (ВСЕ сессии: работа и перерывы)
         gantt_df = df.copy()
         
-        task_col_raw = 'task_name_normalized' if 'task_name_normalized' in gantt_df.columns and not gantt_df['task_name_normalized'].isnull().all() else 'task_name_raw'
-        if task_col_raw not in gantt_df.columns: gantt_df[task_col_raw] = "Без названия"
-        gantt_df[task_col_raw] = gantt_df[task_col_raw].fillna("Без названия")
+        task_col_for_gantt = 'task_name_normalized' if 'task_name_normalized' in gantt_df.columns and not gantt_df['task_name_normalized'].isnull().all() else 'task_name_raw'
+        if task_col_for_gantt not in gantt_df.columns: gantt_df[task_col_for_gantt] = "Без названия"
+        gantt_df[task_col_for_gantt] = gantt_df[task_col_for_gantt].fillna("Без названия")
 
-        gantt_df['gantt_task_name'] = np.where(
-            gantt_df['session_type'] == 'Перерыв', 
-            'Перерыв', 
-            gantt_df[task_col_raw]
-        )
-
-        cols_to_get = ['gantt_task_name', 'start_time_local', 'end_time_local', 'session_type', 'feeling_start', 'feeling_end']
-        existing_cols = [c for c in cols_to_get if c in gantt_df.columns]
-        sessions_for_json = gantt_df[existing_cols].copy()
+        cols_to_get = [task_col_for_gantt, 'start_time_local', 'end_time_local', 'session_type', 'feeling_start', 'feeling_end']
+        sessions_for_json = gantt_df[cols_to_get].copy()
         
         for col in ['feeling_start', 'feeling_end']:
             if col in sessions_for_json.columns:
                 sessions_for_json[col] = sessions_for_json[col].fillna('')
 
         sessions_for_json.rename(columns={
-            'gantt_task_name': 'task_name',
+            task_col_for_gantt: 'task_name',
             'start_time_local': 'start_time',
             'end_time_local': 'end_time'
         }, inplace=True)
