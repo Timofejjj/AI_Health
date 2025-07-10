@@ -393,7 +393,17 @@ def get_dynamics_data(user_id):
             if not gantt_df.empty:
                 gantt_df.loc[:, 'end_time_local'] = gantt_df['end_time'].dt.tz_localize(MOSCOW_TZ, ambiguous='infer', nonexistent='shift_forward')
                 
-                sessions_for_json = gantt_df[[task_col, 'start_time_local', 'end_time_local']].copy()
+                # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем feeling_start и feeling_end в выгрузку ---
+                cols_to_get = [task_col, 'start_time_local', 'end_time_local', 'feeling_start', 'feeling_end']
+                existing_cols = [c for c in cols_to_get if c in gantt_df.columns]
+                sessions_for_json = gantt_df[existing_cols].copy()
+                
+                # Заполняем пропуски, чтобы избежать проблем с JSON
+                if 'feeling_start' in sessions_for_json.columns:
+                    sessions_for_json['feeling_start'] = sessions_for_json['feeling_start'].fillna('')
+                if 'feeling_end' in sessions_for_json.columns:
+                    sessions_for_json['feeling_end'] = sessions_for_json['feeling_end'].fillna('')
+                
                 sessions_for_json.rename(columns={
                     task_col: 'task_name',
                     'start_time_local': 'start_time',
