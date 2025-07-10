@@ -90,15 +90,13 @@ function playSound() {
     oscillator.stop(appState.audioCtx.currentTime + 0.5);
 }
 
-// --- ИЗМЕНЕНИЕ ЗДЕСЬ: Полностью переписанная функция logSession с логикой повторных попыток ---
+// Надежная функция записи сессии с логикой повторных попыток
 async function logSession(data) {
     const sessionData = {
         user_id: appState.userId,
         location: appState.session.location,
         ...data
     };
-
-    const blob = new Blob([JSON.stringify(sessionData)], { type: 'application/json' });
 
     const maxRetries = 3; // Максимальное количество попыток
     const retryDelay = 15000; // Пауза между попытками в миллисекундах (15 секунд)
@@ -107,31 +105,25 @@ async function logSession(data) {
         try {
             console.log(`Попытка №${i + 1} отправить данные сессии...`);
 
-            // Используем fetch с keepalive, он надежнее для фоновых задач
             const response = await fetch('/api/log_session', {
                 method: 'POST',
-                body: blob,
-                keepalive: true, // Позволяет запросу завершиться, даже если страница закрывается
+                body: JSON.stringify(sessionData),
+                keepalive: true,
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
 
-            // Если сервер ответил успешно (статус 2xx)
             if (response.ok) {
                 console.log('Данные сессии успешно записаны!');
-                return; // Выходим из функции, задача выполнена
+                return; // Успех, выходим из функции
             }
 
-            // Если сервер ответил с ошибкой (например, 503 Service Unavailable)
             console.error(`Попытка №${i + 1} не удалась. Статус ответа: ${response.status}`);
-
         } catch (error) {
-            // Если произошла сетевая ошибка (например, сервер вообще не доступен)
             console.error(`Попытка №${i + 1} не удалась. Сетевая ошибка:`, error);
         }
 
-        // Если это была не последняя попытка, ждем перед следующей
         if (i < maxRetries - 1) {
             console.log(`Ожидание ${retryDelay / 1000} секунд перед следующей попыткой...`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -139,7 +131,6 @@ async function logSession(data) {
     }
 
     console.error('Не удалось записать данные сессии после всех попыток.');
-    // Здесь можно добавить уведомление для пользователя, если это необходимо
     alert('Не удалось сохранить данные последней сессии. Проверьте интернет-соединение.');
 }
 
@@ -267,6 +258,8 @@ function initTimerPage() {
     function completeWorkSession(feeling_end) {
         timerModule.pauseTimer();
         const finalState = appState.session;
+        const overtimeSeconds = Math.max(0, finalState.elapsedSeconds - finalState.totalDuration);
+
         logSession({
             session_type: 'Работа',
             task_name: finalState.taskName,
@@ -275,7 +268,10 @@ function initTimerPage() {
             duration_seconds: finalState.elapsedSeconds,
             feeling_start: finalState.feeling_start, 
             feeling_end: feeling_end,
+            overtime_work: overtimeSeconds,
+            overtime_rest: 0
         });
+        
         appState.session.mode = 'break';
         appState.session.elapsedSeconds = 0;
         appState.session.completionSoundPlayed = false;
@@ -317,12 +313,15 @@ function initTimerPage() {
     function switchToWorkMode() {
         timerModule.pauseTimer();
         if (appState.session.elapsedSeconds > 10) {
+            const overtimeSeconds = Math.max(0, appState.session.elapsedSeconds - appState.session.breakDuration);
             logSession({
                 session_type: 'Перерыв',
-                task_name: appState.session.taskName, // Используем имя текущей задачи
+                task_name: appState.session.taskName,
                 start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: appState.session.elapsedSeconds,
+                overtime_work: 0,
+                overtime_rest: overtimeSeconds
             });
         }
         appState.session.mode = 'work';
@@ -349,14 +348,25 @@ function initTimerPage() {
         timerModule.pauseTimer();
         const finalState = appState.session;
         if (finalState.elapsedSeconds > 0) {
+            let overtimeWork = 0;
+            let overtimeRest = 0;
+
+            if (finalState.mode === 'work') {
+                overtimeWork = Math.max(0, finalState.elapsedSeconds - finalState.totalDuration);
+            } else {
+                overtimeRest = Math.max(0, finalState.elapsedSeconds - finalState.breakDuration);
+            }
+
             logSession({
                 session_type: finalState.mode === 'work' ? 'Работа' : 'Перерыв',
-                task_name: finalState.taskName, // Всегда используем имя задачи из состояния
+                task_name: finalState.taskName,
                 start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: finalState.elapsedSeconds,
                 feeling_start: finalState.feeling_start,
                 feeling_end: 'Принудительно завершено',
+                overtime_work: overtimeWork,
+                overtime_rest: overtimeRest
             });
         }
         clearTimerState();
@@ -455,6 +465,7 @@ function renderCalendars(calendarsData, container) {
 }
 
 function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
+    if (!dailyData || !dailyData.labels || !dailyData.data) return;
     const allLabels = dailyData.labels;
     const allDataPoints = dailyData.data;
 
@@ -495,13 +506,13 @@ function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
 function renderHourlyChart(allSessions, canvas, picker) {
     let chart = null;
     const colorPalette = [
-        'rgba(14, 187, 242, 0.85)',  // Light Blue
-        'rgba(46, 204, 113, 0.85)',  // Green
-        'rgba(255, 206, 86, 0.85)',  // Yellow
-        'rgba(231, 76, 60, 0.85)',   // Red
-        'rgba(255, 159, 64, 0.85)'   // Orange
+        'rgba(14, 187, 242, 0.85)',
+        'rgba(46, 204, 113, 0.85)',
+        'rgba(255, 206, 86, 0.85)',
+        'rgba(231, 76, 60, 0.85)',
+        'rgba(255, 159, 64, 0.85)'
     ];
-    const breakColor = 'rgba(155, 89, 182, 0.8)'; // Purple for breaks
+    const breakColor = 'rgba(155, 89, 182, 0.8)';
     const taskColorMap = new Map();
 
     function updateChart(selectedDateStr) {
@@ -548,7 +559,7 @@ function renderHourlyChart(allSessions, canvas, picker) {
                 barPercentage = 0.4; 
                 categoryPercentage = 0.8;
                 borderRadius = 10;
-            } else { // Это рабочая сессия
+            } else {
                 if (!taskColorMap.has(session.task_name)) {
                     taskColorMap.set(session.task_name, colorPalette[taskColorMap.size % colorPalette.length]);
                 }
@@ -594,35 +605,17 @@ function renderHourlyChart(allSessions, canvas, picker) {
                             displayFormats: { hour: 'HH:mm' }
                         },
                         position: 'bottom',
-                        grid: {
-                            color: '#f0f0f0'
-                        },
-                        ticks: {
-                            color: '#666',
-                            maxRotation: 0,
-                            minRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: 12
-                        }
+                        grid: { color: '#f0f0f0' },
+                        ticks: { color: '#666', maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 12 }
                     },
                     y: {
                        stacked: true,
-                       grid: {
-                           display: true,
-                           drawBorder: false,
-                           color: '#f0f0f0',
-                           lineWidth: 1,
-                           drawTicks: false
-                       },
-                       ticks: {
-                           color: '#333'
-                       }
+                       grid: { display: true, drawBorder: false, color: '#f0f0f0', lineWidth: 1, drawTicks: false },
+                       ticks: { color: '#333' }
                     }
                 },
                 plugins: {
-                    legend: {
-                         display: false
-                    },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             title: (context) => {
@@ -649,12 +642,8 @@ function renderHourlyChart(allSessions, canvas, picker) {
                                 let tooltipText = [`${startTime} - ${endTime} (${durationMins} мин)`];
                                 
                                 if (session?.session_type === 'Работа') {
-                                    if (session?.feeling_start) {
-                                        tooltipText.push(`  → Начало: ${session.feeling_start}`);
-                                    }
-                                    if (session?.feeling_end) {
-                                        tooltipText.push(`  → Конец: ${session.feeling_end}`);
-                                    }
+                                    if (session?.feeling_start) tooltipText.push(`  → Начало: ${session.feeling_start}`);
+                                    if (session?.feeling_end) tooltipText.push(`  → Конец: ${session.feeling_end}`);
                                 }
                                 return tooltipText;
                             }
