@@ -94,7 +94,7 @@ def get_data_from_sheet(worksheet_name, user_id):
         return []
     try:
         records = worksheet.get_all_records()
-        if not user_id: # Если user_id не предоставлен, возвращаем все записи
+        if not user_id: 
             return records
         return [r for r in records if str(r.get('user_id')) == str(user_id)]
     except Exception as e:
@@ -127,7 +127,6 @@ def normalize_task_name_with_ai(new_task_name, existing_tasks):
         return new_task_name
 
 # --- ФУНКЦИИ ДЛЯ АНАЛИТИКИ ---
-
 def get_last_analysis_timestamp_utc(analyses):
     if not analyses: return None
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
@@ -261,7 +260,7 @@ def login():
         user_id = request.form.get('user_id')
         password = request.form.get('password')
         
-        all_users = get_data_from_sheet("users", "") # Получаем всех пользователей
+        all_users = get_data_from_sheet("users", "")
         if not all_users:
             flash("Сервис аутентификации временно недоступен.", "danger")
             return render_template('login.html')
@@ -372,11 +371,27 @@ def log_timer_session():
         feeling_end = data.get('feeling_end', '')
         location = data.get('location', '')
         
+        overtime_work = int(data.get('Ovet_time_work', 0))
+        overtime_rest = int(data.get('Ovet_time_rest', 0))
+        
         worksheet_timer_logs = get_worksheet("timer_logs")
         if not worksheet_timer_logs:
              return jsonify({'status': 'error', 'message': 'Не удалось получить доступ к таблице логов'}), 500
 
-        row = [user_id, task_name_raw, normalized_task, session_type, location, feeling_start, feeling_end, start_time_str, end_time_str, duration]
+        row = [
+            user_id, 
+            task_name_raw, 
+            normalized_task, 
+            session_type, 
+            location, 
+            feeling_start, 
+            feeling_end, 
+            start_time_str, 
+            end_time_str, 
+            duration,
+            overtime_work,
+            overtime_rest
+        ]
         worksheet_timer_logs.append_row(row)
         return jsonify({'status': 'success'})
     except Exception as e:
