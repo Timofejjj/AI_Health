@@ -90,25 +90,59 @@ function playSound() {
     oscillator.stop(appState.audioCtx.currentTime + 0.5);
 }
 
-function logSession(data) {
+// --- ИЗМЕНЕНИЕ ЗДЕСЬ: Полностью переписанная функция logSession с логикой повторных попыток ---
+async function logSession(data) {
     const sessionData = {
         user_id: appState.userId,
-        location: appState.session.location, // Get from state
+        location: appState.session.location,
         ...data
     };
-    
+
     const blob = new Blob([JSON.stringify(sessionData)], { type: 'application/json' });
-    
-    if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/log_session', blob);
-    } else {
-        fetch('/api/log_session', {
-            method: 'POST',
-            body: blob,
-            keepalive: true
-        }).catch(error => console.error('Failed to log session with fetch:', error));
+
+    const maxRetries = 3; // Максимальное количество попыток
+    const retryDelay = 15000; // Пауза между попытками в миллисекундах (15 секунд)
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            console.log(`Попытка №${i + 1} отправить данные сессии...`);
+
+            // Используем fetch с keepalive, он надежнее для фоновых задач
+            const response = await fetch('/api/log_session', {
+                method: 'POST',
+                body: blob,
+                keepalive: true, // Позволяет запросу завершиться, даже если страница закрывается
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // Если сервер ответил успешно (статус 2xx)
+            if (response.ok) {
+                console.log('Данные сессии успешно записаны!');
+                return; // Выходим из функции, задача выполнена
+            }
+
+            // Если сервер ответил с ошибкой (например, 503 Service Unavailable)
+            console.error(`Попытка №${i + 1} не удалась. Статус ответа: ${response.status}`);
+
+        } catch (error) {
+            // Если произошла сетевая ошибка (например, сервер вообще не доступен)
+            console.error(`Попытка №${i + 1} не удалась. Сетевая ошибка:`, error);
+        }
+
+        // Если это была не последняя попытка, ждем перед следующей
+        if (i < maxRetries - 1) {
+            console.log(`Ожидание ${retryDelay / 1000} секунд перед следующей попыткой...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
     }
+
+    console.error('Не удалось записать данные сессии после всех попыток.');
+    // Здесь можно добавить уведомление для пользователя, если это необходимо
+    alert('Не удалось сохранить данные последней сессии. Проверьте интернет-соединение.');
 }
+
 
 function initFabMenu() {
     const fab = document.getElementById('timer-fab');
@@ -572,7 +606,7 @@ function renderHourlyChart(allSessions, canvas, picker) {
                         }
                     },
                     y: {
-                       stacked: true, // Позволяет барам располагаться ближе, если они не пересекаются
+                       stacked: true,
                        grid: {
                            display: true,
                            drawBorder: false,
