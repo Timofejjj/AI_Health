@@ -98,8 +98,8 @@ async function logSession(data) {
         ...data
     };
 
-    const maxRetries = 3; // Максимальное количество попыток
-    const retryDelay = 15000; // Пауза между попытками в миллисекундах (15 секунд)
+    const maxRetries = 3;
+    const retryDelay = 15000;
 
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -116,9 +116,8 @@ async function logSession(data) {
 
             if (response.ok) {
                 console.log('Данные сессии успешно записаны!');
-                return; // Успех, выходим из функции
+                return;
             }
-
             console.error(`Попытка №${i + 1} не удалась. Статус ответа: ${response.status}`);
         } catch (error) {
             console.error(`Попытка №${i + 1} не удалась. Сетевая ошибка:`, error);
@@ -133,7 +132,6 @@ async function logSession(data) {
     console.error('Не удалось записать данные сессии после всех попыток.');
     alert('Не удалось сохранить данные последней сессии. Проверьте интернет-соединение.');
 }
-
 
 function initFabMenu() {
     const fab = document.getElementById('timer-fab');
@@ -268,8 +266,8 @@ function initTimerPage() {
             duration_seconds: finalState.elapsedSeconds,
             feeling_start: finalState.feeling_start, 
             feeling_end: feeling_end,
-            overtime_work: overtimeSeconds,
-            overtime_rest: 0
+            Ovet_time_work: overtimeSeconds,
+            Ovet_time_rest: 0
         });
         
         appState.session.mode = 'break';
@@ -320,8 +318,8 @@ function initTimerPage() {
                 start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
                 end_time: new Date().toISOString(),
                 duration_seconds: appState.session.elapsedSeconds,
-                overtime_work: 0,
-                overtime_rest: overtimeSeconds
+                Ovet_time_work: 0,
+                Ovet_time_rest: overtimeSeconds
             });
         }
         appState.session.mode = 'work';
@@ -365,8 +363,8 @@ function initTimerPage() {
                 duration_seconds: finalState.elapsedSeconds,
                 feeling_start: finalState.feeling_start,
                 feeling_end: 'Принудительно завершено',
-                overtime_work: overtimeWork,
-                overtime_rest: overtimeRest
+                Ovet_time_work: overtimeWork,
+                Ovet_time_rest: overtimeRest
             });
         }
         clearTimerState();
