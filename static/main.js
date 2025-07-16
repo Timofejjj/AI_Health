@@ -1,676 +1,340 @@
-// =======================================================
-//        ГЛОБАЛЬНОЕ СОСТОЯНИЕ И UI
-// =======================================================
-const TIMER_STATE_KEY = 'timerState';
-const appState = {
-    userId: null,
-    session: {
-        mode: 'work', // 'work' | 'break'
-        startTime: null,
-        isRunning: false,
-        taskName: null,
-        elapsedSeconds: 0,
-        totalDuration: 25 * 60,
-        breakDuration: 10 * 60,
-        completionSoundPlayed: false,
-        location: null,
-        feeling_start: null,
-    },
-    timerInterval: null,
-    audioCtx: null
-};
-
-// --- Вспомогательные функции для localStorage ---
-function getTimerState() { return JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null'); }
-function setTimerState(state) { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
-function clearTimerState() { localStorage.removeItem(TIMER_STATE_KEY); }
-
-// --- Функции для модальных окон ---
-function showModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) modal.classList.add('visible');
-}
-
-function hideModals() {
-    document.querySelectorAll('.modal-overlay.visible').forEach(m => m.classList.remove('visible'));
-}
-
-function updatePersistentBar() {
-    const bar = document.getElementById('persistent-timer-bar');
-    const st = getTimerState();
-    if (!bar) return;
-
-    if (bar.intervalId) {
-        clearInterval(bar.intervalId);
-        bar.intervalId = null;
-    }
-
-    const currentUserId = appState.userId;
-    if (!currentUserId) return;
-
-    if (st && st.isActive && !document.querySelector('.timer-page')) {
-        bar.classList.add('visible');
-        bar.querySelector('.task-name').textContent = st.mode === 'work' ? st.taskName : 'Перерыв';
-        bar.querySelector('#return-to-timer-btn').href = `/timer/${currentUserId}?task=${encodeURIComponent(st.taskName || '')}`;
-
-        const updateBarTime = () => {
-            const duration = st.mode === 'work' ? (st.totalDuration || 25*60) : (st.breakDuration || 10*60);
-            let currentElapsed = st.elapsedSeconds || 0;
-            if (st.isRunning && st.startTime) {
-                currentElapsed += Math.floor((Date.now() - new Date(st.startTime).getTime()) / 1000);
-            }
-            const remaining = duration - currentElapsed;
-            const isOvertime = remaining < 0;
-            const displaySeconds = Math.abs(remaining);
-            const minutes = Math.floor(displaySeconds / 60);
-            const seconds = displaySeconds % 60;
-            bar.querySelector('.time-display').textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        };
-        updateBarTime();
-        bar.intervalId = setInterval(updateBarTime, 1000);
-    } else {
-        bar.classList.remove('visible');
-    }
-}
-
-function playSound() {
-    if (!appState.audioCtx) {
-        try {
-            appState.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-            console.error("Web Audio API is not supported in this browser");
-            return;
-        }
-    }
-    const oscillator = appState.audioCtx.createOscillator();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(440, appState.audioCtx.currentTime);
-    oscillator.connect(appState.audioCtx.destination);
-    oscillator.start();
-    oscillator.stop(appState.audioCtx.currentTime + 0.5);
-}
-
-// Надежная функция записи сессии с логикой повторных попыток
-async function logSession(data) {
-    const sessionData = {
-        user_id: appState.userId,
-        location: appState.session.location,
-        ...data
-    };
-
-    const maxRetries = 3;
-    const retryDelay = 15000;
-
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            console.log(`Попытка №${i + 1} отправить данные сессии...`);
-
-            const response = await fetch('/api/log_session', {
-                method: 'POST',
-                body: JSON.stringify(sessionData),
-                keepalive: true,
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                console.log('Данные сессии успешно записаны!');
-                return;
-            }
-            console.error(`Попытка №${i + 1} не удалась. Статус ответа: ${response.status}`);
-        } catch (error) {
-            console.error(`Попытка №${i + 1} не удалась. Сетевая ошибка:`, error);
-        }
-
-        if (i < maxRetries - 1) {
-            console.log(`Ожидание ${retryDelay / 1000} секунд перед следующей попыткой...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
-    }
-
-    console.error('Не удалось записать данные сессии после всех попыток.');
-    alert('Не удалось сохранить данные последней сессии. Проверьте интернет-соединение.');
-}
-
-function initFabMenu() {
-    const fab = document.getElementById('timer-fab');
-    const menu = document.getElementById('timer-fab-menu');
-    const btn = document.getElementById('fab-menu-session-btn');
-    if (fab && menu && btn) {
-        fab.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('visible'); });
-        document.addEventListener('click', () => menu.classList.remove('visible'));
-        menu.addEventListener('click', e => e.stopPropagation());
-        btn.addEventListener('click', e => {
-            e.preventDefault();
-            menu.classList.remove('visible');
-            const st = getTimerState();
-            if (st && st.isActive) {
-                const params = new URLSearchParams({
-                    task: st.taskName || 'Без названия',
-                    location: st.location || '',
-                    feeling_start: st.feeling_start || ''
-                });
-                window.location.href = `/timer/${appState.userId}?${params.toString()}`;
-            } else {
-                showModal('task-modal');
-            }
-        });
-    }
-}
-
-function initModalClose() {
-    document.getElementById('close-task-modal-btn')?.addEventListener('click', hideModals);
-    document.getElementById('close-start-session-modal-btn')?.addEventListener('click', hideModals);
-}
-
-function initTimerPage() {
-    let timerModule = {}; 
-
-    const params = new URLSearchParams(location.search);
-    let taskNameFromUrl = params.get('task');
-    let locationFromUrl = params.get('location');
-    let feelingStartFromUrl = params.get('feeling_start');
-
-    const taskTitleHeader = document.getElementById('task-title-header');
-    const sessionLabel = document.getElementById('session-label');
-    const timeDisplay = document.querySelector('.timer-widget .time-display');
-    const workControls = document.getElementById('work-session-controls');
-    const startPauseBtn = workControls.querySelector('.control-btn-main');
-    const stopBtn = workControls.querySelector('.control-btn-secondary');
-    const breakControls = document.getElementById('break-session-controls');
-    const startBreakBtn = document.getElementById('start-break-btn');
-    const skipBreakBtn = document.getElementById('skip-break-btn');
-    const forceEndBtn = document.getElementById('force-end-session-btn');
-    const decreaseWorkBtn = document.getElementById('decrease-work-time-btn');
-    const increaseWorkBtn = document.getElementById('increase-work-time-btn');
-    const decreaseBreakBtn = document.getElementById('decrease-break-time-btn');
-    const increaseBreakBtn = document.getElementById('increase-break-time-btn');
-
-    timerModule.saveCurrentState = () => setTimerState({ isActive: true, ...appState.session });
-
-    timerModule.tick = () => {
-        if (!appState.session.isRunning) return;
-        const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
-        let currentTotalElapsed = appState.session.elapsedSeconds + Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        
-        if (currentTotalElapsed >= duration && !appState.session.completionSoundPlayed) {
-            playSound();
-            appState.session.completionSoundPlayed = true;
-        }
-        timerModule.updateUI();
-    };
-
-    timerModule.updateUI = () => {
-        let currentTotalElapsed = Math.floor(appState.session.elapsedSeconds);
-        if (appState.session.isRunning && appState.session.startTime) {
-            currentTotalElapsed = Math.floor(appState.session.elapsedSeconds + (Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        }
-        const duration = (appState.session.mode === 'work') ? appState.session.totalDuration : appState.session.breakDuration;
-        const remaining = duration - currentTotalElapsed;
-        const isOvertime = remaining < 0;
-        const minutes = Math.floor(Math.abs(remaining) / 60);
-        const seconds = Math.abs(remaining) % 60;
-        timeDisplay.textContent = `${isOvertime ? '+' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        timeDisplay.classList.toggle('overtime', isOvertime);
-
-        if (appState.session.mode === 'work') {
-            workControls.classList.remove('hidden');
-            breakControls.classList.add('hidden');
-            sessionLabel.textContent = 'СЕССИЯ';
-            startPauseBtn.textContent = appState.session.isRunning ? 'Пауза' : (appState.session.elapsedSeconds > 0 ? 'Продолжить' : 'Старт');
-            startPauseBtn.classList.toggle('paused', appState.session.isRunning);
-        } else {
-            workControls.classList.add('hidden');
-            breakControls.classList.remove('hidden');
-            sessionLabel.textContent = 'ПЕРЕРЫВ';
-            startBreakBtn.textContent = appState.session.isRunning ? 'Пауза' : 'Начать перерыв';
-            startBreakBtn.classList.toggle('paused', appState.session.isRunning);
-            skipBreakBtn.textContent = appState.session.isRunning ? 'Завершить' : 'Пропустить';
-        }
-        updatePersistentBar();
-    };
-
-    timerModule.startTimer = () => {
-        if (appState.session.isRunning) return;
-        appState.session.isRunning = true;
-        appState.session.startTime = new Date().toISOString();
-        if (appState.timerInterval) clearInterval(appState.timerInterval);
-        appState.timerInterval = setInterval(timerModule.tick, 1000);
-        timerModule.saveCurrentState();
-        timerModule.updateUI();
-    };
-
-    timerModule.pauseTimer = () => {
-        if (!appState.session.isRunning) return;
-        clearInterval(appState.timerInterval);
-        appState.timerInterval = null;
-        const elapsedSinceLastStart = Math.floor((Date.now() - new Date(appState.session.startTime).getTime()) / 1000);
-        appState.session.elapsedSeconds += elapsedSinceLastStart;
-        appState.session.isRunning = false;
-        appState.session.startTime = null;
-        timerModule.saveCurrentState();
-        timerModule.updateUI();
-    };
-
-    function completeWorkSession(feeling_end) {
-        timerModule.pauseTimer();
-        const finalState = appState.session;
-        const overtimeSeconds = Math.max(0, finalState.elapsedSeconds - finalState.totalDuration);
-
-        logSession({
-            session_type: 'Работа',
-            task_name: finalState.taskName,
-            start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
-            end_time: new Date().toISOString(),
-            duration_seconds: finalState.elapsedSeconds,
-            feeling_start: finalState.feeling_start, 
-            feeling_end: feeling_end,
-            Ovet_time_work: overtimeSeconds,
-            Ovet_time_rest: 0
-        });
-        
-        appState.session.mode = 'break';
-        appState.session.elapsedSeconds = 0;
-        appState.session.completionSoundPlayed = false;
-        appState.session.feeling_start = null; 
-        timerModule.saveCurrentState();
-        timerModule.updateUI();
-    }
-
-    function endWorkSessionWithPrompt() {
-        timerModule.pauseTimer();
-        showModal('end-session-modal');
-        document.querySelectorAll('#end-session-modal .choice-btn').forEach(btn => btn.classList.remove('selected'));
-        const feelingEndButtons = document.querySelectorAll('#feeling-end-group .choice-btn');
-        feelingEndButtons.forEach(btn => {
-            btn.onclick = () => {
-                const feeling_end = btn.dataset.value;
-                hideModals();
-                completeWorkSession(feeling_end);
-            };
-        });
-    }
-
-    function startWorkSessionWithPrompt() {
-        showModal('start-session-modal');
-        document.querySelectorAll('#start-session-modal .choice-btn').forEach(btn => btn.classList.remove('selected'));
-        const startBtn = document.getElementById('start-resumed-session-btn');
-        startBtn.onclick = () => {
-             const selectedFeeling = document.querySelector('#feeling-start-group-resumed .choice-btn.selected');
-             if (!selectedFeeling) {
-                 alert('Пожалуйста, выберите ваше состояние.');
-                 return;
-             }
-             appState.session.feeling_start = selectedFeeling.dataset.value;
-             hideModals();
-             timerModule.startTimer();
-        };
-    }
-
-    function switchToWorkMode() {
-        timerModule.pauseTimer();
-        if (appState.session.elapsedSeconds > 10) {
-            const overtimeSeconds = Math.max(0, appState.session.elapsedSeconds - appState.session.breakDuration);
-            logSession({
-                session_type: 'Перерыв',
-                task_name: appState.session.taskName,
-                start_time: new Date(Date.now() - appState.session.elapsedSeconds * 1000).toISOString(),
-                end_time: new Date().toISOString(),
-                duration_seconds: appState.session.elapsedSeconds,
-                Ovet_time_work: 0,
-                Ovet_time_rest: overtimeSeconds
-            });
-        }
-        appState.session.mode = 'work';
-        appState.session.elapsedSeconds = 0;
-        appState.session.completionSoundPlayed = false;
-        timerModule.saveCurrentState();
-        timerModule.updateUI();
-        startWorkSessionWithPrompt();
-    }
-    
-    function handleStartPauseClick() {
-        if (appState.session.isRunning) {
-            timerModule.pauseTimer();
-        } else {
-            if (appState.session.elapsedSeconds > 0) {
-                startWorkSessionWithPrompt();
-            } else {
-                timerModule.startTimer();
-            }
-        }
-    }
-
-    function forceEndSession() {
-        timerModule.pauseTimer();
-        const finalState = appState.session;
-        if (finalState.elapsedSeconds > 0) {
-            let overtimeWork = 0;
-            let overtimeRest = 0;
-
-            if (finalState.mode === 'work') {
-                overtimeWork = Math.max(0, finalState.elapsedSeconds - finalState.totalDuration);
-            } else {
-                overtimeRest = Math.max(0, finalState.elapsedSeconds - finalState.breakDuration);
-            }
-
-            logSession({
-                session_type: finalState.mode === 'work' ? 'Работа' : 'Перерыв',
-                task_name: finalState.taskName,
-                start_time: new Date(Date.now() - finalState.elapsedSeconds * 1000).toISOString(),
-                end_time: new Date().toISOString(),
-                duration_seconds: finalState.elapsedSeconds,
-                feeling_start: finalState.feeling_start,
-                feeling_end: 'Принудительно завершено',
-                Ovet_time_work: overtimeWork,
-                Ovet_time_rest: overtimeRest
-            });
-        }
-        clearTimerState();
-        window.location.href = `/dashboard/${appState.userId}`;
-    }
-
-    startPauseBtn.addEventListener('click', handleStartPauseClick);
-    stopBtn.addEventListener('click', endWorkSessionWithPrompt);
-    startBreakBtn.addEventListener('click', () => appState.session.isRunning ? timerModule.pauseTimer() : timerModule.startTimer());
-    skipBreakBtn.addEventListener('click', switchToWorkMode);
-    forceEndBtn.addEventListener('click', forceEndSession);
-    decreaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration = Math.max(60, appState.session.totalDuration - 60); timerModule.updateUI(); });
-    increaseWorkBtn.addEventListener('click', () => { appState.session.totalDuration += 60; timerModule.updateUI(); });
-    decreaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration = Math.max(60, appState.session.breakDuration - 60); timerModule.updateUI(); });
-    increaseBreakBtn.addEventListener('click', () => { appState.session.breakDuration += 60; timerModule.updateUI(); });
-    document.querySelectorAll('.time-preset-btn').forEach(btn => btn.addEventListener('click', () => { appState.session.totalDuration = parseInt(btn.dataset.minutes) * 60; timerModule.updateUI(); }));
-    document.querySelectorAll('.break-preset-btn').forEach(btn => btn.addEventListener('click', () => { appState.session.breakDuration = parseInt(btn.dataset.minutes) * 60; timerModule.updateUI(); }));
-
-    const existingState = getTimerState();
-    if (existingState && existingState.isActive) {
-        Object.assign(appState.session, existingState);
-        if (taskNameFromUrl) {
-            appState.session.taskName = taskNameFromUrl;
-            appState.session.location = locationFromUrl;
-            appState.session.feeling_start = feelingStartFromUrl;
-        }
-        if (appState.session.isRunning) {
-            if (appState.timerInterval) clearInterval(appState.timerInterval);
-            appState.timerInterval = setInterval(timerModule.tick, 1000);
-        }
-    } else if (taskNameFromUrl) {
-        appState.session.taskName = taskNameFromUrl;
-        appState.session.location = locationFromUrl;
-        appState.session.feeling_start = feelingStartFromUrl;
-        timerModule.saveCurrentState();
-    }
-    taskTitleHeader.textContent = appState.session.taskName;
-    timerModule.updateUI();
-}
-
-async function initDynamicsPage() {
-    const userId = document.body.dataset.userId;
-    if (!userId) return;
-
-    const calendarsContainer = document.getElementById('calendars-container');
-    const weeksFilter = document.getElementById('weeks-filter');
-    const dailyChartCanvas = document.getElementById('dailyActivityChart');
-    const dayPicker = document.getElementById('day-picker');
-    const hourlyChartCanvas = document.getElementById('hourlyActivityChart');
-
-    try {
-        const response = await fetch(`/api/dynamics_data/${userId}`);
-        if (!response.ok) throw new Error(`Network response was not ok: ${response.statusText}`);
-        const data = await response.json();
-        renderCalendars(data.calendars, calendarsContainer);
-        renderDailyChart(data.activity_by_day, data.total_weeks, dailyChartCanvas, weeksFilter);
-        renderHourlyChart(data.work_sessions_list, hourlyChartCanvas, dayPicker);
-    } catch (error) {
-        calendarsContainer.innerHTML = `<p style="color: red;">Не удалось загрузить данные: ${error.message}</p>`;
-        console.error('Error fetching dynamics data:', error);
-    }
-}
-
-function renderCalendars(calendarsData, container) {
-    container.innerHTML = '';
-    if (Object.keys(calendarsData).length === 0) {
-        container.innerHTML = '<p>Нет данных по задачам для отображения.</p>';
-        return;
-    }
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    for (const taskName in calendarsData) {
-        const activeDays = calendarsData[taskName];
-        const calendarEl = document.createElement('div');
-        calendarEl.className = 'calendar';
-        calendarEl.innerHTML = `<div class="calendar-header">${taskName}</div><div class="calendar-body"></div>`;
-        container.appendChild(calendarEl);
-        const calendarBody = calendarEl.querySelector('.calendar-body');
-        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
-        const adjustedFirstDay = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
-        const дниНедели = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-        дниНедели.forEach(day => { calendarBody.innerHTML += `<div class="calendar-day header">${day}</div>`; });
-        for (let i = 0; i < adjustedFirstDay; i++) { calendarBody.innerHTML += `<div class="calendar-day"></div>`; }
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dayEl = document.createElement('div');
-            dayEl.className = 'calendar-day';
-            dayEl.textContent = day;
-            if (activeDays.includes(dateStr)) dayEl.classList.add('active');
-            if (day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear()) dayEl.classList.add('today');
-            calendarBody.appendChild(dayEl);
-        }
-    }
-}
-
-function renderDailyChart(dailyData, totalWeeks, canvas, filter) {
-    if (!dailyData || !dailyData.labels || !dailyData.data) return;
-    const allLabels = dailyData.labels;
-    const allDataPoints = dailyData.data;
-
-    filter.innerHTML = '';
-    [1, 2, 4].forEach(w => {
-        if (totalWeeks >= w) {
-            const option = document.createElement('option');
-            option.value = w * 7;
-            option.textContent = `${w} недел${w === 1 ? 'я' : (w > 1 && w < 5 ? 'и' : 'ь')}`;
-            filter.appendChild(option);
-        }
-    });
-    const allTimeOption = document.createElement('option');
-    allTimeOption.value = allLabels.length;
-    allTimeOption.textContent = 'Все время';
-    allTimeOption.selected = true;
-    filter.appendChild(allTimeOption);
-
-    const chart = new Chart(canvas, { type: 'bar', data: { labels: allLabels, datasets: [{ label: 'Часы работы', data: allDataPoints, backgroundColor: 'rgba(0, 122, 255, 0.6)', borderColor: 'rgba(0, 122, 255, 1)', borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Часы' } }, x: { type: 'time', time: { unit: 'day', tooltipFormat: 'd MMM yyyy' }, ticks: { autoSkip: true, maxTicksLimit: 15 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => new Date(ctx[0].parsed.x).toLocaleDateString('ru-RU') } } } } });
-
-    function updateChartData(daysToShow) {
-        const visibleLabels = allLabels.slice(-daysToShow);
-        const visibleData = allDataPoints.slice(-daysToShow);
-        chart.data.labels = visibleLabels;
-        chart.data.datasets[0].data = visibleData;
-        chart.update();
-    }
-    
-    filter.addEventListener('change', (e) => {
-        const daysToShow = parseInt(e.target.value, 10);
-        updateChartData(daysToShow);
-    });
-
-    updateChartData(allLabels.length);
-    filter.value = allLabels.length;
-}
-
-function renderHourlyChart(allSessions, canvas, picker) {
-    let chart = null;
-    const colorPalette = [
-        'rgba(14, 187, 242, 0.85)',
-        'rgba(46, 204, 113, 0.85)',
-        'rgba(255, 206, 86, 0.85)',
-        'rgba(231, 76, 60, 0.85)',
-        'rgba(255, 159, 64, 0.85)'
-    ];
-    const breakColor = 'rgba(155, 89, 182, 0.8)';
-    const taskColorMap = new Map();
-
-    function updateChart(selectedDateStr) {
-        if (chart) {
-            chart.destroy();
-            chart = null;
-        }
-
-        const dayStart = new Date(`${selectedDateStr}T00:00:00`);
-        const dayEnd = new Date(`${selectedDateStr}T23:59:59`);
-        
-        const daySessions = allSessions.filter(s => {
-            if (!s.start_time || !s.end_time) return false;
-            const sessionStart = new Date(s.start_time);
-            const sessionEnd = new Date(s.end_time);
-            return sessionStart < dayEnd && sessionEnd > dayStart;
-        });
-
-        const noDataEl = document.getElementById('hourly-chart-no-data');
-        if (daySessions.length === 0) {
-            canvas.style.display = 'none';
-            if (!noDataEl) {
-                const p = document.createElement('p');
-                p.id = 'hourly-chart-no-data';
-                p.textContent = 'Нет данных об активности за этот день.';
-                canvas.parentNode.appendChild(p);
-            } else {
-                noDataEl.style.display = 'block';
-            }
-            canvas.parentNode.style.height = '50px';
-            return;
-        } else {
-            canvas.style.display = 'block';
-            if (noDataEl) noDataEl.style.display = 'none';
-        }
-
-        const yLabels = [...new Set(daySessions.map(s => s.task_name))].sort();
-
-        const datasets = daySessions.map(session => {
-            let color, barPercentage, categoryPercentage, borderRadius;
-
-            if (session.session_type === 'Перерыв') {
-                color = breakColor;
-                barPercentage = 0.4; 
-                categoryPercentage = 0.8;
-                borderRadius = 10;
-            } else {
-                if (!taskColorMap.has(session.task_name)) {
-                    taskColorMap.set(session.task_name, colorPalette[taskColorMap.size % colorPalette.length]);
-                }
-                color = taskColorMap.get(session.task_name);
-                barPercentage = 0.6; 
-                categoryPercentage = 0.8;
-                borderRadius = 15;
-            }
-
-            return {
-                label: session.task_name, 
-                data: [{
-                    x: [new Date(session.start_time), new Date(session.end_time)],
-                    y: session.task_name
-                }],
-                backgroundColor: color,
-                borderSkipped: false,
-                borderRadius: borderRadius,
-                barPercentage: barPercentage,
-                categoryPercentage: categoryPercentage,
-            };
-        });
-        
-        const chartData = {
-            labels: yLabels,
-            datasets: datasets
-        };
-
-        chart = new Chart(canvas, {
-            type: 'bar',
-            data: chartData,
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        type: 'time',
-                        min: dayStart.getTime(),
-                        max: dayEnd.getTime(),
-                        time: {
-                            unit: 'hour',
-                            displayFormats: { hour: 'HH:mm' }
-                        },
-                        position: 'bottom',
-                        grid: { color: '#f0f0f0' },
-                        ticks: { color: '#666', maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 12 }
-                    },
-                    y: {
-                       stacked: true,
-                       grid: { display: true, drawBorder: false, color: '#f0f0f0', lineWidth: 1, drawTicks: false },
-                       ticks: { color: '#333' }
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            title: (context) => {
-                                 const session = daySessions.find(s => 
-                                    new Date(s.start_time).getTime() === context[0].raw.x[0].getTime() &&
-                                    s.task_name === context[0].raw.y
-                                );
-                                return session?.session_type === 'Перерыв' ? 'Перерыв' : context[0]?.dataset.label;
-                            },
-                            label: (context) => {
-                                const session = daySessions.find(s => 
-                                    new Date(s.start_time).getTime() === context.raw.x[0].getTime() &&
-                                    new Date(s.end_time).getTime() === context.raw.x[1].getTime() &&
-                                    s.task_name === context.raw.y
-                                );
-
-                                const start = new Date(context.raw.x[0]);
-                                const end = new Date(context.raw.x[1]);
-                                const durationMs = end - start;
-                                const durationMins = Math.round(durationMs / 60000);
-                                const startTime = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                                const endTime = end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                                
-                                let tooltipText = [`${startTime} - ${endTime} (${durationMins} мин)`];
-                                
-                                if (session?.session_type === 'Работа') {
-                                    if (session?.feeling_start) tooltipText.push(`  → Начало: ${session.feeling_start}`);
-                                    if (session?.feeling_end) tooltipText.push(`  → Конец: ${session.feeling_end}`);
-                                }
-                                return tooltipText;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        
-        const newHeight = Math.max(250, yLabels.length * 70 + 80);
-        canvas.parentNode.style.height = `${newHeight}px`;
-    }
-    
-    const todayStr = new Date().toISOString().split('T')[0];
-    picker.value = todayStr;
-    picker.max = todayStr;
-    picker.addEventListener('change', (e) => updateChart(e.target.value));
-    updateChart(todayStr);
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-    appState.userId = document.body.dataset.userId;
+    // === STATE MANAGEMENT ===
+    const appState = {
+        currentScreen: 'home',
+        isPanelOpen: false,
+        activeMenu: null,
+        userId: document.body.dataset.userId,
+        timer: {
+            isActive: false,
+            isPaused: false,
+            startTime: null,
+            pauseTime: null,
+            totalPausedMs: 0,
+            intervalId: null,
+            type: null, // 'work', 'sport', 'break'
+            details: {} // { name, location, stimulusStart, etc. }
+        },
+        stimulusCallback: null,
+    };
 
-    initFabMenu();
-    initModalClose();
-    updatePersistentBar();
+    // === DOM ELEMENTS ===
+    const screenWrapper = document.querySelector('.screen-wrapper');
+    const thoughtsPanel = document.getElementById('thoughts-panel');
 
+    // === NAVIGATION ===
+    function navigateTo(targetScreenId) {
+        const currentActive = document.querySelector('.screen.active');
+        const nextScreen = document.getElementById(targetScreenId);
+
+        if (currentActive && nextScreen && currentActive.id !== nextScreen.id) {
+            screenWrapper.style.minHeight = `${currentActive.offsetHeight}px`; // Prevent layout jump
+            
+            currentActive.classList.add('exiting');
+            nextScreen.classList.add('active');
+
+            // Wait for animation to finish before cleaning up
+            currentActive.addEventListener('transitionend', () => {
+                currentActive.classList.remove('active', 'exiting');
+                screenWrapper.style.minHeight = '';
+            }, { once: true });
+            
+            appState.currentScreen = targetScreenId;
+        }
+        closeAllPopups();
+    }
+
+    // === UI HELPERS ===
+    function toggleThoughtsPanel() {
+        appState.isPanelOpen = !appState.isPanelOpen;
+        thoughtsPanel.classList.toggle('open', appState.isPanelOpen);
+        if (appState.isPanelOpen) {
+            document.getElementById('thought-input').focus();
+        }
+    }
+
+    function togglePopupMenu(menuId) {
+        if (appState.activeMenu === menuId) {
+            closeAllPopups();
+            return;
+        }
+        closeAllPopups();
+        const menu = document.getElementById(menuId);
+        if (menu) {
+            menu.classList.add('show');
+            appState.activeMenu = menuId;
+        }
+    }
+
+    function closeAllPopups() {
+        document.querySelectorAll('.popup-menu.show').forEach(m => m.classList.remove('show'));
+        appState.activeMenu = null;
+    }
+    
+    function showToast(message, type = 'info', duration = 3000) {
+        const toast = document.getElementById('toast-notification');
+        toast.textContent = message;
+        toast.className = 'toast';
+        toast.classList.add(type, 'show');
+        setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    // === API & DATA RENDERING ===
+    async function fetchApi(endpoint, options = {}) {
+        try {
+            const response = await fetch(endpoint, options);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error('API Error:', error);
+            showToast('Сетевая ошибка', 'error');
+            throw error;
+        }
+    }
+    
+    function renderList(containerId, templateId, data, renderItem) {
+        const container = document.getElementById(containerId);
+        const template = document.getElementById(templateId);
+        container.innerHTML = '';
+        if (data.length === 0) {
+            container.innerHTML = '<p class="empty-list-message">Здесь пока пусто.</p>';
+            return;
+        }
+        data.forEach(item => {
+            const clone = template.content.cloneNode(true);
+            renderItem(clone, item);
+            container.appendChild(clone);
+        });
+    }
+
+    function loadAndRenderHistory() {
+        const containerId = 'history-list';
+        document.getElementById(containerId).innerHTML = '<div class="loader"></div>';
+        fetchApi(`/api/analyses/${appState.userId}`)
+            .then(data => {
+                renderList(containerId, 'history-item-template', data, (clone, item) => {
+                    clone.querySelector('.item-date').textContent = new Date(item.analysis_timestamp).toLocaleString('ru-RU');
+                    clone.querySelector('.item-content').innerHTML = item.report_content; // Assuming markdown is pre-rendered or trusted
+                });
+            }).catch(() => document.getElementById(containerId).innerHTML = '<p>Не удалось загрузить историю.</p>');
+    }
+
+    function loadAndRenderThoughts() {
+        const containerId = 'thoughts-list-container';
+        document.getElementById(containerId).innerHTML = '<div class="loader"></div>';
+        fetchApi(`/api/thoughts/${appState.userId}`)
+            .then(data => {
+                renderList(containerId, 'thought-item-template', data, (clone, item) => {
+                    clone.querySelector('.item-date').textContent = new Date(item.timestamp).toLocaleString('ru-RU');
+                    clone.querySelector('.item-content').textContent = item.content;
+                });
+            }).catch(() => document.getElementById(containerId).innerHTML = '<p>Не удалось загрузить мысли.</p>');
+    }
+
+    // === TIMER LOGIC ===
+    const Timer = {
+        tick() {
+            const now = Date.now();
+            const elapsedMs = now - appState.timer.startTime - appState.timer.totalPausedMs;
+            const seconds = Math.floor(elapsedMs / 1000) % 60;
+            const minutes = Math.floor(elapsedMs / (1000 * 60));
+            document.getElementById('timer-time-display').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        },
+
+        start(type, details) {
+            Object.assign(appState.timer, {
+                isActive: true,
+                isPaused: false,
+                startTime: Date.now(),
+                pauseTime: null,
+                totalPausedMs: 0,
+                type: type,
+                details: details,
+            });
+            appState.timer.intervalId = setInterval(this.tick, 1000);
+            document.getElementById('timer-activity-name').textContent = details.name;
+            this.tick();
+            navigateTo('timer');
+        },
+
+        pause() {
+            if (!appState.timer.isActive || appState.timer.isPaused) return;
+            clearInterval(appState.timer.intervalId);
+            appState.timer.isPaused = true;
+            appState.timer.pauseTime = Date.now();
+            document.querySelector('[data-action="pause-timer"]').textContent = 'Продолжить';
+        },
+
+        resume() {
+            if (!appState.timer.isActive || !appState.timer.isPaused) return;
+            appState.timer.totalPausedMs += Date.now() - appState.timer.pauseTime;
+            appState.timer.isPaused = false;
+            appState.timer.pauseTime = null;
+            appState.timer.intervalId = setInterval(this.tick, 1000);
+             document.querySelector('[data-action="pause-timer"]').textContent = 'Пауза';
+        },
+
+        stop(stoppedByUser = true) {
+            if (!appState.timer.isActive) return;
+            
+            clearInterval(appState.timer.intervalId);
+            this.tick(); // Final tick to get precise time
+            
+            const endTime = Date.now();
+            const durationSeconds = Math.round((endTime - appState.timer.startTime - appState.timer.totalPausedMs) / 1000);
+            
+            const logData = {
+                user_id: appState.userId,
+                name: appState.timer.details.name,
+                startTime: new Date(appState.timer.startTime).toISOString(),
+                endTime: new Date(endTime).toISOString(),
+                duration_seconds: durationSeconds,
+            };
+            
+            // LOGIC FOR DIFFERENT TIMER TYPES
+            if (appState.timer.type === 'work') {
+                appState.stimulusCallback = (stimulusEnd) => {
+                    const workData = {
+                        user_id: appState.userId,
+                        task_name_raw: appState.timer.details.name,
+                        location: appState.timer.details.location,
+                        session_type: 'Работа',
+                        start_time: logData.startTime,
+                        end_time: logData.endTime,
+                        duration_seconds: logData.duration_seconds,
+                        stimulus_level_start: appState.timer.details.stimulusStart,
+                        stimulus_level_end: stimulusEnd,
+                    };
+                    fetchApi('/api/log_session', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(workData)
+                    }).then(() => showToast('Рабочая сессия сохранена', 'success'));
+                    
+                    navigateTo('break-prompt');
+                };
+                document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после работы?';
+                navigateTo('stimulus-prompt');
+            } else if (appState.timer.type === 'sport') {
+                fetchApi('/api/log_sport_activity', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(logData)
+                }).then(() => showToast('Тренировка сохранена', 'success'));
+                navigateTo('home');
+            } else if (appState.timer.type === 'break') {
+                appState.stimulusCallback = (stimulusEnd) => {
+                    const breakData = {
+                        user_id: appState.userId,
+                        session_type: 'Перерыв',
+                        start_time: logData.startTime,
+                        end_time: logData.endTime,
+                        duration_seconds: logData.duration_seconds,
+                        stimulus_level_start: appState.timer.details.stimulusStart,
+                        stimulus_level_end: stimulusEnd,
+                    };
+                    fetchApi('/api/log_session', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(breakData)
+                    }).then(() => showToast('Перерыв сохранен', 'success'));
+                    navigateTo('home');
+                };
+                document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после перерыва?';
+                navigateTo('stimulus-prompt');
+            }
+
+            // Reset timer state
+            appState.timer = { isActive: false, isPaused: false, intervalId: null };
+        }
+    };
+
+    // === EVENT HANDLERS ===
+    function handleAction(e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+
+        const { action, target: targetScreen, menu: menuId, type, value } = target.dataset;
+
+        switch (action) {
+            case 'navigate':
+                navigateTo(targetScreen);
+                if (targetScreen === 'history') loadAndRenderHistory();
+                if (targetScreen === 'thoughts-list') loadAndRenderThoughts();
+                break;
+            case 'toggle-menu':
+                togglePopupMenu(menuId);
+                break;
+            case 'toggle-thoughts-panel':
+                toggleThoughtsPanel();
+                break;
+            case 'close-panel':
+                if (appState.isPanelOpen) toggleThoughtsPanel();
+                navigateTo('home');
+                break;
+            case 'submit-thought':
+                const thoughtInput = document.getElementById('thought-input');
+                const thought = thoughtInput.value.trim();
+                if (thought) {
+                    fetchApi(`/api/thoughts/${appState.userId}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ thought })
+                    }).then(() => {
+                        showToast('Мысль сохранена!', 'success');
+                        thoughtInput.value = '';
+                        toggleThoughtsPanel();
+                    });
+                }
+                break;
+            case 'start-timer':
+                if (type === 'work') {
+                    const name = document.getElementById('work-title').value || 'Работа без названия';
+                    const location = document.getElementById('work-location').value || 'Не указано';
+                    const stimulusStart = document.getElementById('work-stimulus').value;
+                    Timer.start('work', { name, location, stimulusStart });
+                } else if (type === 'sport') {
+                    const selectedSport = document.querySelector('#sport-type-group .choice-btn.selected');
+                    const name = selectedSport ? selectedSport.dataset.value : 'Спорт';
+                    const stimulusStart = document.getElementById('sport-stimulus').value;
+                    Timer.start('sport', { name, stimulusStart });
+                }
+                break;
+            case 'pause-timer':
+                appState.timer.isPaused ? Timer.resume() : Timer.pause();
+                break;
+            case 'stop-timer':
+                Timer.stop();
+                break;
+            case 'submit-stimulus':
+                const stimulusValue = document.getElementById('prompt-stimulus-slider').value;
+                if (appState.stimulusCallback) {
+                    appState.stimulusCallback(stimulusValue);
+                    appState.stimulusCallback = null;
+                }
+                break;
+            case 'start-break':
+                appState.stimulusCallback = (stimulusStart) => {
+                    Timer.start('break', { name: 'Перерыв', stimulusStart });
+                };
+                document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете перед перерывом?';
+                navigateTo('stimulus-prompt');
+                break;
+            case 'skip-break':
+                // Here you could log a skipped break if needed
+                showToast('Перерыв пропущен');
+                navigateTo('home');
+                break;
+        }
+    }
+    
+    // === INITIALIZATION ===
+    document.body.addEventListener('click', handleAction);
+
+    // Handle choice button selection
     document.querySelectorAll('.choice-group').forEach(group => {
-        group.addEventListener('click', (e) => {
+        group.addEventListener('click', e => {
             if (e.target.classList.contains('choice-btn')) {
                 group.querySelectorAll('.choice-btn').forEach(btn => btn.classList.remove('selected'));
                 e.target.classList.add('selected');
@@ -678,30 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const taskForm = document.getElementById('task-form');
-    if (taskForm) {
-        taskForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const taskName = document.getElementById('task-name-input').value.trim();
-            const location = document.querySelector('#location-group .choice-btn.selected')?.dataset.value;
-            const feeling_start = document.querySelector('#feeling-start-group .choice-btn.selected')?.dataset.value;
-            if (!taskName || !location || !feeling_start) {
-                alert('Пожалуйста, заполните все поля.');
-                return;
-            }
-            if (appState.userId) {
-                hideModals();
-                clearTimerState();
-                const params = new URLSearchParams({ task: taskName, location: location, feeling_start: feeling_start });
-                window.location.href = `/timer/${appState.userId}?${params.toString()}`;
-            }
-        });
-    }
+    // Global click to close popups
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.popup-menu') && !e.target.closest('[data-action="toggle-menu"]')) {
+            closeAllPopups();
+        }
+    });
 
-    if (document.querySelector('.timer-page')) {
-        initTimerPage();
-    }
-    if (document.querySelector('.dynamics-page')) {
-        initDynamicsPage();
-    }
 });
