@@ -6,4 +6,3 @@ gunicorn
 python-dateutil
 pandas
 Markdown
-marked
