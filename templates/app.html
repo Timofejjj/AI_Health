@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Основной контейнер, имитирующий мобильное приложение -->
+<div class="app-container">
+    <!-- Обертка для экранов, чтобы управлять анимацией сдвига -->
+    <div class="screen-wrapper">
+
+        <!-- ======================= HOME SCREEN ======================= -->
+        <div class="screen active" id="home">
+            <h1 class="greeting">Доброе утро, {{ user_id }}</h1>
+            <div class="actions-container">
+                <button class="action-btn" data-action="toggle-menu" data-menu="track-activity-menu">
+                    <span>Отследить активности</span>
+                </button>
+                <button class="action-btn-icon" data-action="toggle-menu" data-menu="main-menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+            </div>
+            <!-- Меню для кнопки "+" -->
+            <div class="popup-menu" id="main-menu">
+                <a href="#" class="menu-item" data-action="navigate" data-target="history"><span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 8V12L14 14M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>История анализов</a>
+                <a href="#" class="menu-item" data-action="navigate" data-target="stats"><span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20V14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Статистика</a>
+                <button class="menu-item" data-action="run-analysis"><span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 2v6h6m-8 4.5L11 9.5l2 2 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Запустить анализ</button>
+            </div>
+            <!-- Меню для "Отследить активности" -->
+            <div class="popup-menu" id="track-activity-menu">
+                <button class="menu-item" data-action="navigate" data-target="start-work"><span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m8-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Работа</button>
+                <button class="menu-item" data-action="navigate" data-target="start-sport"><span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Спорт</button>
+            </div>
+        </div>
+
+        <!-- ======================= START WORK SCREEN ======================= -->
+        <div class="screen" id="start-work">
+             <div class="screen-header">
+                <button class="back-btn" data-action="navigate" data-target="home"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <h2>Начало работы</h2>
+            </div>
+            <div class="form-content">
+                <div class="form-group">
+                    <label for="work-title">Заголовок</label>
+                    <input type="text" id="work-title" placeholder="Чем планируете заняться?">
+                </div>
+                <div class="form-group">
+                    <label for="work-location">Место</label>
+                    <input type="text" id="work-location" placeholder="Например, Офис или Дом">
+                </div>
+                 <div class="form-group">
+                    <label>Уровень стимула</label>
+                    <input type="range" id="work-stimulus" min="1" max="10" value="5" class="stimulus-slider">
+                    <div class="slider-labels"><span>1</span><span>10</span></div>
+                </div>
+            </div>
+            <button class="screen-button primary" data-action="start-timer" data-type="work">Начать!</button>
+        </div>
+        
+        <!-- ======================= START SPORT SCREEN ======================= -->
+        <div class="screen" id="start-sport">
+             <div class="screen-header">
+                <button class="back-btn" data-action="navigate" data-target="home"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <h2>Начало спортивной активности</h2>
+            </div>
+            <div class="form-content">
+                <div class="choice-group" id="sport-type-group">
+                    <button class="choice-btn" data-value="Бег">Бег</button>
+                    <button class="choice-btn" data-value="Велоспорт">Велоспорт</button>
+                    <button class="choice-btn" data-value="Поход">Поход</button>
+                    <button class="choice-btn" data-value="Силовая">Силовая</button>
+                </div>
+                 <div class="form-group">
+                    <label>Уровень стимула</label>
+                    <input type="range" id="sport-stimulus" min="1" max="10" value="5" class="stimulus-slider">
+                    <div class="slider-labels"><span>1</span><span>10</span></div>
+                </div>
+            </div>
+            <button class="screen-button primary" data-action="start-timer" data-type="sport">Начать!</button>
+        </div>
+
+        <!-- ======================= TIMER SCREEN (универсальный) ======================= -->
+        <div class="screen" id="timer">
+            <h2 class="timer-task-name" id="timer-activity-name"></h2>
+            <div class="timer-display" id="timer-time-display">00:00</div>
+            <div class="timer-controls">
+                <button class="screen-button secondary" data-action="pause-timer">Пауза</button>
+                <button class="screen-button danger" data-action="stop-timer">Завершить</button>
+            </div>
+        </div>
+        
+        <!-- ======================= STIMULUS PROMPT SCREEN (универсальный) ======================= -->
+        <div class="screen" id="stimulus-prompt">
+            <h2 id="stimulus-prompt-title">Как вы себя чувствуете?</h2>
+            <div class="form-content">
+                 <div class="form-group">
+                    <label>Уровень стимула</label>
+                    <input type="range" id="prompt-stimulus-slider" min="1" max="10" value="5" class="stimulus-slider">
+                    <div class="slider-labels"><span>1</span><span>10</span></div>
+                </div>
+            </div>
+            <button class="screen-button primary" data-action="submit-stimulus">Продолжить</button>
+        </div>
+
+        <!-- ======================= BREAK PROMPT SCREEN ======================= -->
+        <div class="screen" id="break-prompt">
+            <h2>Сессия завершена!</h2>
+            <p>Время для перерыва.</p>
+            <div class="timer-controls">
+                <button class="screen-button secondary" data-action="skip-break">Пропустить</button>
+                <button class="screen-button primary" data-action="start-break">Начать перерыв (5 мин)</button>
+            </div>
+        </div>
+
+        <!-- ======================= HISTORY SCREEN ======================= -->
+        <div class="screen list-screen" id="history">
+            <div class="screen-header">
+                <button class="back-btn" data-action="navigate" data-target="home"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <h2>История анализов</h2>
+            </div>
+            <div class="list-container" id="history-list">
+                <div class="loader"></div>
+            </div>
+        </div>
+        
+        <!-- ======================= THOUGHTS LIST SCREEN ======================= -->
+         <div class="screen list-screen" id="thoughts-list">
+            <div class="screen-header">
+                <button class="back-btn" data-action="close-panel"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <h2>Список мыслей</h2>
+            </div>
+            <div class="list-container" id="thoughts-list-container">
+                <div class="loader"></div>
+            </div>
+        </div>
+
+        <!-- ======================= STATS SCREEN ======================= -->
+        <div class="screen" id="stats">
+             <div class="screen-header">
+                <button class="back-btn" data-action="navigate" data-target="home"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <h2>Статистика</h2>
+            </div>
+            <div class="list-container">
+                <p>Раздел статистики в разработке.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ======================= BOTTOM PANEL ======================= -->
+    <div class="bottom-panel" id="thoughts-panel">
+        <div class="panel-handle" data-action="toggle-thoughts-panel">
+            <div class="handle-icon-wrapper">
+                <svg class="chevron-up" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 15L12 9L6 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <button class="panel-edit-btn" data-action="navigate" data-target="thoughts-list">
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+        </div>
+        <div class="panel-content">
+            <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
+            <button class="submit-thought-btn" data-action="submit-thought">Отправить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= TOAST & TEMPLATES ======================= -->
+<div id="toast-notification" class="toast">
+    <p id="toast-message"></p>
+</div>
+
+<template id="history-item-template">
+    <div class="list-item">
+        <div class="item-meta">Отчет от <span class="item-date"></span></div>
+        <div class="item-content markdown-body"></div>
+    </div>
+</template>
+
+<template id="thought-item-template">
+     <div class="list-item">
+        <div class="item-meta"><span class="item-date"></span></div>
+        <p class="item-content"></p>
+    </div>
+</template>
+
+{% endblock %}
