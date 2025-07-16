@@ -28,16 +28,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const nextScreen = document.getElementById(targetScreenId);
 
         if (currentActive && nextScreen && currentActive.id !== nextScreen.id) {
-            screenWrapper.style.minHeight = `${currentActive.offsetHeight}px`; // Prevent layout jump
+            screenWrapper.style.minHeight = `${currentActive.offsetHeight}px`;
             
             currentActive.classList.add('exiting');
             nextScreen.classList.add('active');
-
-            // Wait for animation to finish before cleaning up
-            currentActive.addEventListener('transitionend', () => {
+            
+            // Cleanup after animation
+            setTimeout(() => {
                 currentActive.classList.remove('active', 'exiting');
                 screenWrapper.style.minHeight = '';
-            }, { once: true });
+            }, 400);
             
             appState.currentScreen = targetScreenId;
         }
@@ -48,9 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function toggleThoughtsPanel() {
         appState.isPanelOpen = !appState.isPanelOpen;
         thoughtsPanel.classList.toggle('open', appState.isPanelOpen);
-        if (appState.isPanelOpen) {
-            document.getElementById('thought-input').focus();
-        }
+        if (appState.isPanelOpen) document.getElementById('thought-input').focus();
     }
 
     function togglePopupMenu(menuId) {
@@ -96,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById(containerId);
         const template = document.getElementById(templateId);
         container.innerHTML = '';
-        if (data.length === 0) {
+        if (!data || data.length === 0) {
             container.innerHTML = '<p class="empty-list-message">Здесь пока пусто.</p>';
             return;
         }
@@ -114,9 +112,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 renderList(containerId, 'history-item-template', data, (clone, item) => {
                     clone.querySelector('.item-date').textContent = new Date(item.analysis_timestamp).toLocaleString('ru-RU');
-                    clone.querySelector('.item-content').innerHTML = item.report_content; // Assuming markdown is pre-rendered or trusted
+                    if (window.marked) {
+                        clone.querySelector('.item-content').innerHTML = marked.parse(item.report_content || '');
+                    } else {
+                        clone.querySelector('.item-content').textContent = item.report_content;
+                    }
                 });
-            }).catch(() => document.getElementById(containerId).innerHTML = '<p>Не удалось загрузить историю.</p>');
+            }).catch(() => document.getElementById(containerId).innerHTML = '<p class="empty-list-message">Не удалось загрузить историю.</p>');
     }
 
     function loadAndRenderThoughts() {
@@ -128,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     clone.querySelector('.item-date').textContent = new Date(item.timestamp).toLocaleString('ru-RU');
                     clone.querySelector('.item-content').textContent = item.content;
                 });
-            }).catch(() => document.getElementById(containerId).innerHTML = '<p>Не удалось загрузить мысли.</p>');
+            }).catch(() => document.getElementById(containerId).innerHTML = '<p class="empty-list-message">Не удалось загрузить мысли.</p>');
     }
 
     // === TIMER LOGIC ===
@@ -144,13 +146,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         start(type, details) {
             Object.assign(appState.timer, {
-                isActive: true,
-                isPaused: false,
-                startTime: Date.now(),
-                pauseTime: null,
-                totalPausedMs: 0,
-                type: type,
-                details: details,
+                isActive: true, isPaused: false, startTime: Date.now(),
+                pauseTime: null, totalPausedMs: 0, type: type, details: details,
             });
             appState.timer.intervalId = setInterval(this.tick, 1000);
             document.getElementById('timer-activity-name').textContent = details.name;
@@ -172,80 +169,63 @@ document.addEventListener('DOMContentLoaded', () => {
             appState.timer.isPaused = false;
             appState.timer.pauseTime = null;
             appState.timer.intervalId = setInterval(this.tick, 1000);
-             document.querySelector('[data-action="pause-timer"]').textContent = 'Пауза';
+            document.querySelector('[data-action="pause-timer"]').textContent = 'Пауза';
         },
 
-        stop(stoppedByUser = true) {
+        stop() {
             if (!appState.timer.isActive) return;
-            
             clearInterval(appState.timer.intervalId);
-            this.tick(); // Final tick to get precise time
+            this.tick();
             
             const endTime = Date.now();
             const durationSeconds = Math.round((endTime - appState.timer.startTime - appState.timer.totalPausedMs) / 1000);
             
             const logData = {
-                user_id: appState.userId,
-                name: appState.timer.details.name,
                 startTime: new Date(appState.timer.startTime).toISOString(),
                 endTime: new Date(endTime).toISOString(),
                 duration_seconds: durationSeconds,
             };
-            
-            // LOGIC FOR DIFFERENT TIMER TYPES
-            if (appState.timer.type === 'work') {
-                appState.stimulusCallback = (stimulusEnd) => {
-                    const workData = {
-                        user_id: appState.userId,
-                        task_name_raw: appState.timer.details.name,
-                        location: appState.timer.details.location,
-                        session_type: 'Работа',
-                        start_time: logData.startTime,
-                        end_time: logData.endTime,
-                        duration_seconds: logData.duration_seconds,
-                        stimulus_level_start: appState.timer.details.stimulusStart,
-                        stimulus_level_end: stimulusEnd,
+
+            const typeHandlers = {
+                'work': () => {
+                    appState.stimulusCallback = (stimulusEnd) => {
+                        const workData = {
+                            user_id: appState.userId, task_name_raw: appState.timer.details.name,
+                            location: appState.timer.details.location, session_type: 'Работа', ...logData,
+                            stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd,
+                        };
+                        fetchApi('/api/log_session', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(workData)})
+                          .then(() => showToast('Рабочая сессия сохранена', 'success'));
+                        navigateTo('break-prompt');
                     };
-                    fetchApi('/api/log_session', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(workData)
-                    }).then(() => showToast('Рабочая сессия сохранена', 'success'));
-                    
-                    navigateTo('break-prompt');
-                };
-                document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после работы?';
-                navigateTo('stimulus-prompt');
-            } else if (appState.timer.type === 'sport') {
-                fetchApi('/api/log_sport_activity', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(logData)
-                }).then(() => showToast('Тренировка сохранена', 'success'));
-                navigateTo('home');
-            } else if (appState.timer.type === 'break') {
-                appState.stimulusCallback = (stimulusEnd) => {
-                    const breakData = {
-                        user_id: appState.userId,
-                        session_type: 'Перерыв',
-                        start_time: logData.startTime,
-                        end_time: logData.endTime,
-                        duration_seconds: logData.duration_seconds,
-                        stimulus_level_start: appState.timer.details.stimulusStart,
-                        stimulus_level_end: stimulusEnd,
-                    };
-                    fetchApi('/api/log_session', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(breakData)
-                    }).then(() => showToast('Перерыв сохранен', 'success'));
+                    document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после работы?';
+                    navigateTo('stimulus-prompt');
+                },
+                'sport': () => {
+                    const sportData = { user_id: appState.userId, name: appState.timer.details.name, ...logData };
+                    fetchApi('/api/log_sport_activity', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(sportData)})
+                      .then(() => showToast('Тренировка сохранена', 'success'));
                     navigateTo('home');
-                };
-                document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после перерыва?';
-                navigateTo('stimulus-prompt');
+                },
+                'break': () => {
+                    appState.stimulusCallback = (stimulusEnd) => {
+                        const breakData = {
+                            user_id: appState.userId, session_type: 'Перерыв', ...logData,
+                            stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd,
+                        };
+                        fetchApi('/api/log_session', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(breakData)})
+                          .then(() => showToast('Перерыв сохранен', 'success'));
+                        navigateTo('home');
+                    };
+                    document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете после перерыва?';
+                    navigateTo('stimulus-prompt');
+                }
+            };
+
+            if (typeHandlers[appState.timer.type]) {
+                typeHandlers[appState.timer.type]();
             }
 
-            // Reset timer state
             appState.timer = { isActive: false, isPaused: false, intervalId: null };
         }
     };
@@ -255,84 +235,80 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target.closest('[data-action]');
         if (!target) return;
 
-        const { action, target: targetScreen, menu: menuId, type, value } = target.dataset;
+        const { action, target: targetScreen, menu: menuId, type } = target.dataset;
 
-        switch (action) {
-            case 'navigate':
+        const actionHandlers = {
+            'navigate': () => {
                 navigateTo(targetScreen);
                 if (targetScreen === 'history') loadAndRenderHistory();
                 if (targetScreen === 'thoughts-list') loadAndRenderThoughts();
-                break;
-            case 'toggle-menu':
-                togglePopupMenu(menuId);
-                break;
-            case 'toggle-thoughts-panel':
-                toggleThoughtsPanel();
-                break;
-            case 'close-panel':
+            },
+            'toggle-menu': () => togglePopupMenu(menuId),
+            'toggle-thoughts-panel': () => toggleThoughtsPanel(),
+            'close-panel': () => {
                 if (appState.isPanelOpen) toggleThoughtsPanel();
                 navigateTo('home');
-                break;
-            case 'submit-thought':
+            },
+            'submit-thought': () => {
                 const thoughtInput = document.getElementById('thought-input');
                 const thought = thoughtInput.value.trim();
                 if (thought) {
-                    fetchApi(`/api/thoughts/${appState.userId}`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ thought })
-                    }).then(() => {
+                    fetchApi(`/api/thoughts/${appState.userId}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ thought })})
+                      .then(() => {
                         showToast('Мысль сохранена!', 'success');
                         thoughtInput.value = '';
                         toggleThoughtsPanel();
-                    });
+                      });
                 }
-                break;
-            case 'start-timer':
-                if (type === 'work') {
-                    const name = document.getElementById('work-title').value || 'Работа без названия';
-                    const location = document.getElementById('work-location').value || 'Не указано';
-                    const stimulusStart = document.getElementById('work-stimulus').value;
-                    Timer.start('work', { name, location, stimulusStart });
-                } else if (type === 'sport') {
-                    const selectedSport = document.querySelector('#sport-type-group .choice-btn.selected');
-                    const name = selectedSport ? selectedSport.dataset.value : 'Спорт';
-                    const stimulusStart = document.getElementById('sport-stimulus').value;
-                    Timer.start('sport', { name, stimulusStart });
-                }
-                break;
-            case 'pause-timer':
-                appState.timer.isPaused ? Timer.resume() : Timer.pause();
-                break;
-            case 'stop-timer':
-                Timer.stop();
-                break;
-            case 'submit-stimulus':
+            },
+            'run-analysis': () => {
+                showToast('Запускаю анализ... Это может занять до минуты.', 'info');
+                fetchApi(`/api/run_analysis/${appState.userId}`, { method: 'POST' })
+                  .then(response => {
+                        showToast(response.message || 'Анализ завершен!', 'success');
+                        navigateTo('history');
+                        loadAndRenderHistory();
+                  });
+            },
+            'start-timer': () => {
+                const details = type === 'work' ? {
+                    name: document.getElementById('work-title').value || 'Работа без названия',
+                    location: document.getElementById('work-location').value || 'Не указано',
+                    stimulusStart: document.getElementById('work-stimulus').value,
+                } : {
+                    name: (document.querySelector('#sport-type-group .choice-btn.selected')?.dataset.value) || 'Спорт',
+                    stimulusStart: document.getElementById('sport-stimulus').value,
+                };
+                Timer.start(type, details);
+            },
+            'pause-timer': () => appState.timer.isPaused ? Timer.resume() : Timer.pause(),
+            'stop-timer': () => Timer.stop(),
+            'submit-stimulus': () => {
                 const stimulusValue = document.getElementById('prompt-stimulus-slider').value;
                 if (appState.stimulusCallback) {
                     appState.stimulusCallback(stimulusValue);
                     appState.stimulusCallback = null;
                 }
-                break;
-            case 'start-break':
-                appState.stimulusCallback = (stimulusStart) => {
-                    Timer.start('break', { name: 'Перерыв', stimulusStart });
-                };
+            },
+            'start-break': () => {
+                appState.stimulusCallback = (stimulusStart) => Timer.start('break', { name: 'Перерыв', stimulusStart });
                 document.getElementById('stimulus-prompt-title').textContent = 'Как вы себя чувствуете перед перерывом?';
                 navigateTo('stimulus-prompt');
-                break;
-            case 'skip-break':
-                // Here you could log a skipped break if needed
+            },
+            'skip-break': () => {
                 showToast('Перерыв пропущен');
                 navigateTo('home');
-                break;
+            },
+        };
+
+        if (actionHandlers[action]) {
+            actionHandlers[action]();
         }
     }
     
     // === INITIALIZATION ===
     document.body.addEventListener('click', handleAction);
 
-    // Handle choice button selection
     document.querySelectorAll('.choice-group').forEach(group => {
         group.addEventListener('click', e => {
             if (e.target.classList.contains('choice-btn')) {
@@ -342,11 +318,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Global click to close popups
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.popup-menu') && !e.target.closest('[data-action="toggle-menu"]')) {
             closeAllPopups();
         }
     });
-
 });
