@@ -1,67 +1,43 @@
 document.addEventListener('DOMContentLoaded', () => {
     // === STATE MANAGEMENT ===
     const appState = {
-        currentScreen: 'home',
-        isPanelOpen: false,
-        activeMenu: null,
         userId: document.body.dataset.userId,
-        timer: {
-            isActive: false,
-            isPaused: false,
-            startTime: null,
-            pauseTime: null,
-            totalPausedMs: 0,
-            intervalId: null,
-            type: null, // 'work', 'sport', 'break'
-            details: {} // { name, location, stimulusStart, etc. }
-        },
+        activeMenu: null,
+        timer: { isActive: false, isPaused: false, intervalId: null },
         stimulusCallback: null,
     };
+    const DOM = {
+        shell: document.querySelector('.app-shell'),
+        leftPane: document.getElementById('thoughts-list-pane'),
+        rightPane: document.getElementById('compose-thought-pane'),
+    };
 
-    // === DOM ELEMENTS ===
-    const screenWrapper = document.querySelector('.screen-wrapper');
-    const thoughtsPanel = document.getElementById('thoughts-panel');
-
-    // === NAVIGATION ===
+    // === NAVIGATION & UI ===
     function navigateTo(targetScreenId) {
         const currentActive = document.querySelector('.screen.active');
         const nextScreen = document.getElementById(targetScreenId);
-
         if (currentActive && nextScreen && currentActive.id !== nextScreen.id) {
-            screenWrapper.style.minHeight = `${currentActive.offsetHeight}px`;
-            
             currentActive.classList.add('exiting');
             nextScreen.classList.add('active');
-            
-            // Cleanup after animation
-            setTimeout(() => {
-                currentActive.classList.remove('active', 'exiting');
-                screenWrapper.style.minHeight = '';
-            }, 400);
-            
-            appState.currentScreen = targetScreenId;
+            setTimeout(() => currentActive.classList.remove('active', 'exiting'), 400);
         }
         closeAllPopups();
     }
 
-    // === UI HELPERS ===
-    function toggleThoughtsPanel() {
-        appState.isPanelOpen = !appState.isPanelOpen;
-        thoughtsPanel.classList.toggle('open', appState.isPanelOpen);
-        if (appState.isPanelOpen) document.getElementById('thought-input').focus();
+    function togglePane(pane) {
+        DOM.shell.classList.toggle(`${pane}-pane-visible`);
+        if (pane === 'left' && DOM.shell.classList.contains('left-pane-visible')) {
+            loadAndRenderThoughts();
+        }
     }
 
     function togglePopupMenu(menuId) {
-        if (appState.activeMenu === menuId) {
-            closeAllPopups();
-            return;
-        }
-        closeAllPopups();
         const menu = document.getElementById(menuId);
-        if (menu) {
-            menu.classList.add('show');
-            appState.activeMenu = menuId;
+        if (appState.activeMenu && appState.activeMenu !== menu) {
+            appState.activeMenu.classList.remove('show');
         }
+        menu.classList.toggle('show');
+        appState.activeMenu = menu.classList.contains('show') ? menu : null;
     }
 
     function closeAllPopups() {
@@ -90,8 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function renderList(containerId, templateId, data, renderItem) {
-        const container = document.getElementById(containerId);
+    function renderList(container, templateId, data, renderItem) {
         const template = document.getElementById(templateId);
         container.innerHTML = '';
         if (!data || data.length === 0) {
@@ -106,94 +81,70 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function loadAndRenderHistory() {
-        const containerId = 'history-list';
-        document.getElementById(containerId).innerHTML = '<div class="loader"></div>';
+        const container = document.getElementById('history-list');
+        container.innerHTML = '<div class="loader"></div>';
         fetchApi(`/api/analyses/${appState.userId}`)
-            .then(data => {
-                renderList(containerId, 'history-item-template', data, (clone, item) => {
-                    clone.querySelector('.item-date').textContent = new Date(item.analysis_timestamp).toLocaleString('ru-RU');
-                    if (window.marked) {
-                        clone.querySelector('.item-content').innerHTML = marked.parse(item.report_content || '');
-                    } else {
-                        clone.querySelector('.item-content').textContent = item.report_content;
-                    }
-                });
-            }).catch(() => document.getElementById(containerId).innerHTML = '<p class="empty-list-message">Не удалось загрузить историю.</p>');
+            .then(data => renderList(container, 'history-item-template', data, (clone, item) => {
+                clone.querySelector('.item-date').textContent = new Date(item.analysis_timestamp).toLocaleString('ru-RU');
+                clone.querySelector('.item-content').innerHTML = window.marked ? marked.parse(item.report_content || '') : item.report_content;
+            })).catch(() => container.innerHTML = '<p>Не удалось загрузить историю.</p>');
     }
 
     function loadAndRenderThoughts() {
-        const containerId = 'thoughts-list-container';
-        document.getElementById(containerId).innerHTML = '<div class="loader"></div>';
+        const container = document.getElementById('thoughts-list-container');
+        container.innerHTML = '<div class="loader"></div>';
         fetchApi(`/api/thoughts/${appState.userId}`)
-            .then(data => {
-                renderList(containerId, 'thought-item-template', data, (clone, item) => {
-                    clone.querySelector('.item-date').textContent = new Date(item.timestamp).toLocaleString('ru-RU');
-                    clone.querySelector('.item-content').textContent = item.content;
-                });
-            }).catch(() => document.getElementById(containerId).innerHTML = '<p class="empty-list-message">Не удалось загрузить мысли.</p>');
+            .then(data => renderList(container, 'thought-item-template', data, (clone, item) => {
+                clone.querySelector('.item-date').textContent = new Date(item.timestamp).toLocaleString('ru-RU');
+                clone.querySelector('.item-content').textContent = item.content;
+            })).catch(() => container.innerHTML = '<p>Не удалось загрузить мысли.</p>');
     }
 
     // === TIMER LOGIC ===
     const Timer = {
         tick() {
-            const now = Date.now();
-            const elapsedMs = now - appState.timer.startTime - appState.timer.totalPausedMs;
+            const elapsedMs = Date.now() - appState.timer.startTime - appState.timer.totalPausedMs;
             const seconds = Math.floor(elapsedMs / 1000) % 60;
             const minutes = Math.floor(elapsedMs / (1000 * 60));
-            document.getElementById('timer-time-display').textContent = 
-                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            document.getElementById('timer-time-display').textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         },
-
         start(type, details) {
-            Object.assign(appState.timer, {
-                isActive: true, isPaused: false, startTime: Date.now(),
-                pauseTime: null, totalPausedMs: 0, type: type, details: details,
-            });
+            Object.assign(appState.timer, { isActive: true, isPaused: false, startTime: Date.now(), pauseTime: null, totalPausedMs: 0, type, details });
             appState.timer.intervalId = setInterval(this.tick, 1000);
             document.getElementById('timer-activity-name').textContent = details.name;
             this.tick();
             navigateTo('timer');
         },
-
-        pause() {
+        pause() { appState.timer.isPaused ? this.resume() : this._doPause(); },
+        _doPause() {
             if (!appState.timer.isActive || appState.timer.isPaused) return;
             clearInterval(appState.timer.intervalId);
             appState.timer.isPaused = true;
             appState.timer.pauseTime = Date.now();
             document.querySelector('[data-action="pause-timer"]').textContent = 'Продолжить';
         },
-
         resume() {
             if (!appState.timer.isActive || !appState.timer.isPaused) return;
             appState.timer.totalPausedMs += Date.now() - appState.timer.pauseTime;
             appState.timer.isPaused = false;
-            appState.timer.pauseTime = null;
             appState.timer.intervalId = setInterval(this.tick, 1000);
             document.querySelector('[data-action="pause-timer"]').textContent = 'Пауза';
         },
-
         stop() {
             if (!appState.timer.isActive) return;
             clearInterval(appState.timer.intervalId);
             this.tick();
             
-            const endTime = Date.now();
-            const durationSeconds = Math.round((endTime - appState.timer.startTime - appState.timer.totalPausedMs) / 1000);
-            
             const logData = {
                 startTime: new Date(appState.timer.startTime).toISOString(),
-                endTime: new Date(endTime).toISOString(),
-                duration_seconds: durationSeconds,
+                endTime: new Date().toISOString(),
+                duration_seconds: Math.round((Date.now() - appState.timer.startTime - appState.timer.totalPausedMs) / 1000),
             };
 
             const typeHandlers = {
                 'work': () => {
                     appState.stimulusCallback = (stimulusEnd) => {
-                        const workData = {
-                            user_id: appState.userId, task_name_raw: appState.timer.details.name,
-                            location: appState.timer.details.location, session_type: 'Работа', ...logData,
-                            stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd,
-                        };
+                        const workData = { user_id: appState.userId, task_name_raw: appState.timer.details.name, location: appState.timer.details.location, session_type: 'Работа', ...logData, stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd };
                         fetchApi('/api/log_session', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(workData)})
                           .then(() => showToast('Рабочая сессия сохранена', 'success'));
                         navigateTo('break-prompt');
@@ -209,10 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 'break': () => {
                     appState.stimulusCallback = (stimulusEnd) => {
-                        const breakData = {
-                            user_id: appState.userId, session_type: 'Перерыв', ...logData,
-                            stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd,
-                        };
+                        const breakData = { user_id: appState.userId, session_type: 'Перерыв', ...logData, stimulus_level_start: appState.timer.details.stimulusStart, stimulus_level_end: stimulusEnd };
                         fetchApi('/api/log_session', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(breakData)})
                           .then(() => showToast('Перерыв сохранен', 'success'));
                         navigateTo('home');
@@ -221,34 +169,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     navigateTo('stimulus-prompt');
                 }
             };
-
-            if (typeHandlers[appState.timer.type]) {
-                typeHandlers[appState.timer.type]();
-            }
-
+            typeHandlers[appState.timer.type]?.();
             appState.timer = { isActive: false, isPaused: false, intervalId: null };
         }
     };
 
-    // === EVENT HANDLERS ===
+    // === EVENT HANDLER ===
     function handleAction(e) {
         const target = e.target.closest('[data-action]');
         if (!target) return;
 
-        const { action, target: targetScreen, menu: menuId, type } = target.dataset;
+        e.preventDefault();
+        const { action, target: targetId, menu: menuId, type, pane } = target.dataset;
 
         const actionHandlers = {
             'navigate': () => {
-                navigateTo(targetScreen);
-                if (targetScreen === 'history') loadAndRenderHistory();
-                if (targetScreen === 'thoughts-list') loadAndRenderThoughts();
+                navigateTo(targetId);
+                if (targetId === 'history') loadAndRenderHistory();
             },
+            'toggle-pane': () => togglePane(pane),
             'toggle-menu': () => togglePopupMenu(menuId),
-            'toggle-thoughts-panel': () => toggleThoughtsPanel(),
-            'close-panel': () => {
-                if (appState.isPanelOpen) toggleThoughtsPanel();
-                navigateTo('home');
-            },
             'submit-thought': () => {
                 const thoughtInput = document.getElementById('thought-input');
                 const thought = thoughtInput.value.trim();
@@ -257,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       .then(() => {
                         showToast('Мысль сохранена!', 'success');
                         thoughtInput.value = '';
-                        toggleThoughtsPanel();
+                        togglePane('right');
                       });
                 }
             },
@@ -265,24 +205,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Запускаю анализ... Это может занять до минуты.', 'info');
                 fetchApi(`/api/run_analysis/${appState.userId}`, { method: 'POST' })
                   .then(response => {
-                        showToast(response.message || 'Анализ завершен!', 'success');
+                        showToast(response.message, 'success');
                         navigateTo('history');
                         loadAndRenderHistory();
                   });
             },
             'start-timer': () => {
                 const details = type === 'work' ? {
-                    name: document.getElementById('work-title').value || 'Работа без названия',
-                    location: document.getElementById('work-location').value || 'Не указано',
-                    stimulusStart: document.getElementById('work-stimulus').value,
+                    name: document.getElementById('work-title').value || 'Работа без названия', location: document.getElementById('work-location').value || 'Не указано', stimulusStart: document.getElementById('work-stimulus').value,
                 } : {
-                    name: (document.querySelector('#sport-type-group .choice-btn.selected')?.dataset.value) || 'Спорт',
-                    stimulusStart: document.getElementById('sport-stimulus').value,
+                    name: (document.querySelector('#sport-type-group .choice-btn.selected')?.dataset.value) || 'Спорт', stimulusStart: document.getElementById('sport-stimulus').value,
                 };
                 Timer.start(type, details);
             },
-            'pause-timer': () => appState.timer.isPaused ? Timer.resume() : Timer.pause(),
-            'stop-timer': () => Timer.stop(),
+            'pause-timer': Timer.pause.bind(Timer),
+            'stop-timer': Timer.stop.bind(Timer),
             'submit-stimulus': () => {
                 const stimulusValue = document.getElementById('prompt-stimulus-slider').value;
                 if (appState.stimulusCallback) {
@@ -301,9 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
         };
 
-        if (actionHandlers[action]) {
-            actionHandlers[action]();
-        }
+        actionHandlers[action]?.();
     }
     
     // === INITIALIZATION ===
