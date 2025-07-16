@@ -160,6 +160,7 @@ def login():
 
 @app.route('/app/<user_id>')
 def app_view(user_id):
+    # Здесь можно передать начальные данные, если нужно, например, имя пользователя
     return render_template('app.html', user_id=user_id)
 
 # --- Редиректы со старых URL на новый SPA-маршрут ---
@@ -197,6 +198,7 @@ def get_analyses(user_id):
 @app.route('/api/run_analysis/<user_id>', methods=['POST'])
 def run_analysis(user_id):
     try:
+        # Получаем ВСЕ данные, так как анализ теперь комплексный
         thoughts = get_data_from_sheet("thoughts", user_id)
         timers = get_data_from_sheet("timer_logs", user_id)
         sports = get_data_from_sheet("sports activity", user_id)
@@ -229,10 +231,11 @@ def log_work_session():
              return jsonify({'status': 'error', 'message': 'Не удалось получить доступ к таблице логов'}), 500
         start_time_local = parser.isoparse(data['start_time']).astimezone(MOSCOW_TZ)
         end_time_local = parser.isoparse(data['end_time']).astimezone(MOSCOW_TZ)
+        # Приводим к формату Google Sheets, как в старом коде
         worksheet.append_row(values=[
             str(data['user_id']), str(data.get('task_name_raw', '')),
             str(data.get('task_name_normalized', '')), str(data.get('session_type', 'Работа')),
-            str(data.get('location', '')), "", "",
+            str(data.get('location', '')), "", "", # Пустые feeling_start, feeling_end
             start_time_local.strftime('%Y-%m-%d %H:%M:%S'), end_time_local.strftime('%Y-%m-%d %H:%M:%S'),
             int(data['duration_seconds']), int(data.get('overtime_work', 0)),
             int(data.get('overtime_rest', 0)), data.get('stimulus_level_start', ''),
