@@ -9,53 +9,26 @@
 </head>
 <body data-user-id="{{ user_id }}">
     <div class="app-container">
-        <!-- Левая панель для списка мыслей -->
-        <div id="thoughts-list-pane" class="side-pane left-pane">
-            <div class="pane-header">
-                <h2>Список мыслей</h2>
-            </div>
-            <div class="pane-content">
-                <div id="thoughts-list"></div>
-            </div>
-            <div class="pane-toggle-arrow" data-action="toggle-left-pane">
-                <span class="chevron-right">▶</span>
+        <!-- Левая боковая панель навигации -->
+        <div class="sidebar" data-action="toggle-sidebar">
+            <div class="chevron">></div>
+            <div class="menu-item"><span>Дашборд</span></div>
+            <div class="menu-item"><span>Настройки</span></div>
+        </div>
+
+        <!-- Основная контентная область -->
+        <div class="content">
+            <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
+            <div class="button-block">
+                <button class="track-btn">⏰ Отследить активность</button>
+                <button class="add-btn" data-action="toggle-compose-panel">+</button>
             </div>
         </div>
 
-        <!-- Основной контент (экраны) -->
-        <div class="screen-wrapper">
-            <div id="home" class="screen active">
-                <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
-                <div class="actions-container">
-                    <div class="action-item">
-                        <button class="action-btn">Отследить успехи</button>
-                        <div class="popup-menu">
-                            <button class="menu-item">Работа</button>
-                            <button class="menu-item">Спорт</button>
-                            <button class="menu-item">История анализов</button>
-                        </div>
-                    </div>
-                    <div class="action-item">
-                        <button class="action-btn-icon" data-action="toggle-compose-panel">+</button>
-                        <div class="popup-menu">
-                            <button class="menu-item">Статистика</button>
-                            <button class="menu-item">Запустить анализ</button>
-                            <button class="menu-item">Выйти</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Нижняя панель для ввода мыслей -->
+        <!-- Нижняя панель действий -->
         <div id="compose-thought-panel" class="bottom-panel">
-            <div class="panel-handle" data-action="toggle-compose-panel">
-                <span class="chevron-up">⬆</span>
-            </div>
-            <div class="panel-content">
-                <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
-                <button class="screen-button primary" data-action="submit-thought">Отправить</button>
-            </div>
+            <div class="chevron" data-action="toggle-compose-panel">^</div>
+            <button class="edit-btn">✎</button>
         </div>
     </div>
 </body>
