@@ -1,21 +1,154 @@
-{% extends "base.html" %}
-{% block title %}Вход{% endblock %}
-{% block content %}
-<div class="login-page-container">
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход в систему</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --surface-color: #ffffff;
+            --primary-text: #1c1e21;
+            --accent-color: #0866ff;
+            --border-color: #dddfe2;
+            --danger-color: #fa383e;
+            --font-family: 'Inter', -apple-system, sans-serif;
+            --border-radius: 8px;
+            --shadow-light: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .login-container {
+            background-color: var(--surface-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-light);
+            width: 100%;
+            max-width: 400px;
+            padding: 24px;
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        .login-header h1 {
+            font-size: 24px;
+            color: var(--primary-text);
+            margin-bottom: 8px;
+        }
+        
+        .login-header p {
+            color: #606770;
+            font-size: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--primary-text);
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(8, 102, 255, 0.2);
+        }
+        
+        .login-button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        
+        .login-button:hover {
+            background-color: #0759e0;
+        }
+        
+        .flash-messages {
+            margin-bottom: 16px;
+        }
+        
+        .flash-message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        
+        .flash-message.danger {
+            background-color: #ffebe8;
+            border: 1px solid #ffd1cc;
+            color: var(--danger-color);
+        }
+    </style>
+</head>
+<body>
     <div class="login-container">
-        <form method="post" action="{{ url_for('login') }}">
-            <h1>Дневник мыслей</h1>
+        <div class="login-header">
+            <h1>Productivity Tracker</h1>
+            <p>Войдите в свой аккаунт</p>
+        </div>
+        
+        <div class="flash-messages">
             {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
-                  <div class="notification {{ category if category != 'message' else 'danger' }}">{{ message }}</div>
-                {% endfor %}
-              {% endif %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
             {% endwith %}
-            <div class="input-group"><label for="user_id">Логин</label><input type="text" id="user_id" name="user_id" required></div>
-            <div class="input-group"><label for="password">Пароль</label><input type="password" id="password" name="password" required></div>
-            <button type="submit" class="button">Войти</button>
+        </div>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label for="user_id">ID пользователя</label>
+                <input type="text" id="user_id" name="user_id" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-button">Войти</button>
         </form>
     </div>
-</div>
-{% endblock %}
+</body>
+</html>
