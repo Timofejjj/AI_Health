@@ -16,16 +16,19 @@ MOSCOW_TZ = tz.gettz('Europe/Moscow')
 # --- ШАБЛОННЫЕ ФИЛЬТРЫ ---
 @app.template_filter('markdown')
 def markdown_filter(s):
+    """Преобразует строку Markdown в HTML."""
     return markdown.markdown(s or '', extensions=['fenced_code', 'tables'])
 
 # --- ИНИЦИАЛИЗАЦИЯ GOOGLE & GEMINI API ---
 gemini_model = None
 try:
+    # Загружаем учетные данные из переменной окружения
     GOOGLE_CREDS_INFO = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
     if not GOOGLE_CREDS_INFO or not GOOGLE_SHEET_ID:
         raise ValueError("Переменные GOOGLE_CREDENTIALS_JSON и GOOGLE_SHEET_ID должны быть установлены.")
     
+    # Настраиваем Gemini API, если ключ доступен
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     if gemini_api_key:
         import google.generativeai as genai
@@ -40,49 +43,63 @@ except Exception as e:
 
 # --- ФУНКЦИИ-ПОМОЩНИКИ ДЛЯ GOOGLE SHEETS ---
 def get_gspread_client():
-    if not GOOGLE_CREDS_INFO: raise Exception("Учетные данные Google не были загружены.")
+    """Возвращает авторизованный клиент gspread."""
+    if not GOOGLE_CREDS_INFO:
+        raise Exception("Учетные данные Google не были загружены.")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(GOOGLE_CREDS_INFO, scopes=scopes)
     return gspread.authorize(creds)
 
 def get_worksheet(worksheet_name):
+    """Получает доступ к конкретному листу в Google Таблице."""
     try:
         gc = get_gspread_client()
         spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
         return spreadsheet.worksheet(worksheet_name)
     except Exception as e:
-        print(f"❌ Ошибка доступа к листу '{worksheet_name}': {e}"); return None
+        print(f"❌ Ошибка доступа к листу '{worksheet_name}': {e}")
+        return None
 
 def get_data_from_sheet(worksheet_name, user_id=None):
+    """Получает все записи с листа или записи для конкретного пользователя."""
     worksheet = get_worksheet(worksheet_name)
     if not worksheet: return []
     try:
         records = worksheet.get_all_records()
-        if not user_id: return records
+        if not user_id:
+            return records
+        # Фильтруем записи по user_id, приводя оба значения к строке для надежности
         return [r for r in records if str(r.get('user_id')) == str(user_id)]
     except Exception as e:
-        print(f"Ошибка чтения данных из листа {worksheet_name}: {e}"); return []
+        print(f"Ошибка чтения данных из листа {worksheet_name}: {e}")
+        return []
 
 
 # --- ГЕНЕРАЦИЯ АНАЛИТИЧЕСКОГО ОТЧЕТА ---
 def generate_analysis_report(thoughts, timers, sports):
-    if not gemini_model: return "Модель анализа недоступна."
+    """Создает промпт и генерирует отчет с помощью Gemini API."""
+    if not gemini_model:
+        return "Модель анализа недоступна. Проверьте конфигурацию GEMINI_API_KEY."
 
+    # Форматирование данных для промпта
     thoughts_text = "\n".join(f"- [{parser.isoparse(t['timestamp']).astimezone(MOSCOW_TZ).strftime('%d.%m %H:%M')}] {t['content']}" for t in thoughts) or "Нет данных о мыслях."
+    
     timer_text_parts = []
     for t in timers:
         duration_min = round(int(t.get('duration_seconds', 0)) / 60)
         stimulus = f"Стимул: {t.get('stimulus_level_start', 'N/A')} -> {t.get('stimulus_level_end', 'N/A')}"
-        overtime = f"Сверхурочно: {t.get('overtime_work', 0)}с" if t.get('session_type') == 'Работа' and t.get('overtime_work') else ""
         session_type = t.get('session_type', 'Работа')
         task_name = t.get('task_name_raw', 'Без названия') if session_type == 'Работа' else session_type
-        timer_text_parts.append(f"- [{parser.parse(t['start_time']).strftime('%d.%m %H:%M')}] {task_name}: {duration_min} мин. ({stimulus}) {overtime}")
+        timer_text_parts.append(f"- [{parser.parse(t['start_time']).astimezone(MOSCOW_TZ).strftime('%d.%m %H:%M')}] {task_name}: {duration_min} мин. ({stimulus})")
     timer_text = "\n".join(timer_text_parts) or "Нет данных о рабочих сессиях."
+    
     sports_text_parts = []
     for s in sports:
         duration_min = round(int(s.get('duration_seconds', 0)) / 60)
-        sports_text_parts.append(f"- [{parser.parse(s['start_time']).strftime('%d.%m %H:%M')}] {s.get('name', 'Тренировка')}: {duration_min} мин.")
+        sports_text_parts.append(f"- [{parser.parse(s['start_time']).astimezone(MOSCOW_TZ).strftime('%d.%m %H:%M')}] {s.get('name', 'Тренировка')}: {duration_min} мин.")
     sports_text = "\n".join(sports_text_parts) or "Нет данных о спортивных активностях."
+
+    # Промпт для Gemini
     prompt = f"""
 # РОЛЬ И ЗАДАЧА
 Ты — элитный аналитик производительности и благополучия. Твоя цель — провести **кросс-функциональный анализ** данных из трёх источников: ментального состояния (мысли), когнитивной работы (рабочие сессии) и физической активности (спорт). Ты должен выявить скрытые связи, паттерны и дать комплексные, действенные рекомендации.
@@ -108,7 +125,6 @@ def generate_analysis_report(thoughts, timers, sports):
 2.  **АНАЛИЗ ПРОИЗВОДИТЕЛЬНОСТИ И ЭНЕРГИИ:**
     *   **Паттерны "Пик-Спад":** Определи дни или периоды максимальной и минимальной продуктивности. Что им предшествовало (спорт, отдых, определённые мысли)?
     *   **Баланс "Работа-Отдых-Спорт":** Оцени, насколько сбалансирован мой график. Есть ли признаки выгорания (много сверхурочной работы, мало отдыха и спорта) или прокрастинации?
-    *   **Эффективность перерывов:** Судя по уровню стимула "до" и "после", насколько эффективны были перерывы?
 
 3.  **ИДЕНТИФИКАЦИЯ ПОВЕДЕНЧЕСКИХ ПЕТЕЛЬ:**
     *   Выяви повторяющиеся циклы. *Пример: "Тревожная мысль о проекте → Пропуск тренировки → Сверхурочная, но непродуктивная работа → Мысль об усталости и неэффективности".*
@@ -130,9 +146,6 @@ def generate_analysis_report(thoughts, timers, sports):
 *   **Action-Point №1 (Синтез):** [Конкретный совет, объединяющий спорт/работу/мысли. *Пример: "Чтобы повысить стимул перед задачей X, попробуй 15-минутную тренировку..."*]
 *   **Action-Point №2 (Оптимизация):** [Совет по оптимизации графика работы или отдыха на основе данных]
 *   **На чем сфокусироваться:** [Одна ключевая вещь (привычка, задача, мысль), на которую стоит обратить внимание на следующей неделе]
-*   **Прогноз:**
-    *   📈 **Оптимистичный:** Что будет, если я последую советам?
-    *   📉 **Пессимистичный:** Какие риски, если ничего не менять?
 """
     try:
         response = gemini_model.generate_content(prompt)
@@ -144,6 +157,7 @@ def generate_analysis_report(thoughts, timers, sports):
 # --- ГЛАВНЫЕ МАРШРУТЫ И РЕДИРЕКТЫ ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
+    """Страница входа в систему."""
     if request.method == 'POST':
         user_id = request.form.get('user_id')
         password = request.form.get('password')
@@ -151,19 +165,35 @@ def login():
         if not all_users:
             flash("Сервис аутентификации временно недоступен.", "danger")
             return render_template('login.html')
+        
         user_found = next((user for user in all_users if str(user.get('user_id')) == user_id and str(user.get('password')) == password), None)
+        
         if user_found:
+            # Успешный вход, перенаправляем в приложение
             return redirect(url_for('app_view', user_id=user_id))
         else:
             flash("Неверный ID или пароль.", "danger")
+            
     return render_template('login.html')
 
 @app.route('/app/<user_id>')
 def app_view(user_id):
-    # Здесь можно передать начальные данные, если нужно, например, имя пользователя
-    return render_template('app.html', user_id=user_id)
+    """Основной маршрут для SPA-приложения."""
+    now_in_moscow = datetime.now(MOSCOW_TZ)
+    hour = now_in_moscow.hour
+    
+    if 4 <= hour < 12:
+        greeting = "Доброе утро"
+    elif 12 <= hour < 17:
+        greeting = "Добрый день"
+    elif 17 <= hour < 23:
+        greeting = "Добрый вечер"
+    else:
+        greeting = "Доброй ночи"
+    
+    return render_template('app.html', user_id=user_id, greeting=greeting)
 
-# --- Редиректы со старых URL на новый SPA-маршрут ---
+# --- Редиректы со старых URL на новый SPA-маршрут для обратной совместимости ---
 @app.route('/dashboard/<user_id>')
 @app.route('/dynamics/<user_id>')
 @app.route('/thoughts/<user_id>')
@@ -174,31 +204,39 @@ def redirect_to_app(user_id):
 
 
 # --- API ЭНДПОИНТЫ ---
+
 @app.route('/api/thoughts/<user_id>', methods=['POST', 'GET'])
 def handle_thoughts(user_id):
+    """API для работы с мыслями: получение списка или добавление новой."""
     if request.method == 'POST':
         data = request.json
         thought = data.get('thought')
-        if not thought: return jsonify({'status': 'error', 'message': 'Пустая мысль'}), 400
+        if not thought:
+            return jsonify({'status': 'error', 'message': 'Пустая мысль'}), 400
+        
         worksheet = get_worksheet("thoughts")
-        if not worksheet: return jsonify({'status': 'error', 'message': 'Сервис недоступен'}), 503
+        if not worksheet:
+            return jsonify({'status': 'error', 'message': 'Сервис недоступен'}), 503
+        
         worksheet.append_row([str(user_id), datetime.now(timezone.utc).isoformat(), thought])
         return jsonify({'status': 'success'}), 201
     else: # GET
         thoughts = get_data_from_sheet("thoughts", user_id)
+        # Сортируем по дате, от новых к старым
         thoughts.sort(key=lambda x: parser.parse(x.get('timestamp', '1970-01-01T00:00:00Z')), reverse=True)
         return jsonify(thoughts)
 
 @app.route('/api/analyses/<user_id>', methods=['GET'])
 def get_analyses(user_id):
+    """API для получения истории аналитических отчетов."""
     analyses = get_data_from_sheet("analyses", user_id)
     analyses.sort(key=lambda x: parser.parse(x.get('analysis_timestamp', '1970-01-01T00:00:00Z')), reverse=True)
     return jsonify(analyses)
 
 @app.route('/api/run_analysis/<user_id>', methods=['POST'])
 def run_analysis(user_id):
+    """API для запуска генерации нового аналитического отчета."""
     try:
-        # Получаем ВСЕ данные, так как анализ теперь комплексный
         thoughts = get_data_from_sheet("thoughts", user_id)
         timers = get_data_from_sheet("timer_logs", user_id)
         sports = get_data_from_sheet("sports activity", user_id)
@@ -211,8 +249,10 @@ def run_analysis(user_id):
         worksheet_analyses = get_worksheet("analyses")
         if worksheet_analyses:
             worksheet_analyses.append_row([
-                str(user_id), datetime.now(timezone.utc).isoformat(),
-                datetime.now(timezone.utc).isoformat(), report
+                str(user_id), 
+                datetime.now(timezone.utc).isoformat(),
+                datetime.now(timezone.utc).isoformat(), # Дублирование для совместимости старой структуры
+                report
             ])
             return jsonify({'status': 'success', 'message': 'Анализ завершен и сохранен!'})
         else:
@@ -221,24 +261,28 @@ def run_analysis(user_id):
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
 @app.route('/api/log_session', methods=['POST'])
 def log_work_session():
+    """API для логирования рабочих сессий и перерывов."""
     data = request.json
     try:
         worksheet = get_worksheet("timer_logs")
         if not worksheet:
              return jsonify({'status': 'error', 'message': 'Не удалось получить доступ к таблице логов'}), 500
-        start_time_local = parser.isoparse(data['start_time']).astimezone(MOSCOW_TZ)
-        end_time_local = parser.isoparse(data['end_time']).astimezone(MOSCOW_TZ)
-        # Приводим к формату Google Sheets, как в старом коде
+        
         worksheet.append_row(values=[
-            str(data['user_id']), str(data.get('task_name_raw', '')),
-            str(data.get('task_name_normalized', '')), str(data.get('session_type', 'Работа')),
-            str(data.get('location', '')), "", "", # Пустые feeling_start, feeling_end
-            start_time_local.strftime('%Y-%m-%d %H:%M:%S'), end_time_local.strftime('%Y-%m-%d %H:%M:%S'),
-            int(data['duration_seconds']), int(data.get('overtime_work', 0)),
-            int(data.get('overtime_rest', 0)), data.get('stimulus_level_start', ''),
+            str(data['user_id']),
+            str(data.get('task_name_raw', '')),
+            str(data.get('task_name_normalized', '')),
+            str(data.get('session_type', 'Работа')),
+            str(data.get('location', '')),
+            "", "", # Пустые feeling_start, feeling_end для совместимости
+            parser.isoparse(data['start_time']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S'),
+            parser.isoparse(data['end_time']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S'),
+            int(data['duration_seconds']),
+            int(data.get('overtime_work', 0)),
+            int(data.get('overtime_rest', 0)),
+            data.get('stimulus_level_start', ''),
             data.get('stimulus_level_end', '')
         ])
         return jsonify({'status': 'success'})
@@ -248,16 +292,18 @@ def log_work_session():
 
 @app.route('/api/log_sport_activity', methods=['POST'])
 def log_sport_activity():
+    """API для логирования спортивных активностей."""
     data = request.json
     try:
         worksheet = get_worksheet("sports activity")
-        if not worksheet: return jsonify({'status': 'error', 'message': 'Сервис недоступен'}), 500
-        start_time_local = parser.isoparse(data['start_time']).astimezone(MOSCOW_TZ)
-        end_time_local = parser.isoparse(data['end_time']).astimezone(MOSCOW_TZ)
+        if not worksheet:
+            return jsonify({'status': 'error', 'message': 'Сервис недоступен'}), 500
+        
         worksheet.append_row([
-            str(data['user_id']), str(data['name']),
-            start_time_local.strftime('%Y-%m-%d %H:%M:%S'),
-            end_time_local.strftime('%Y-%m-%d %H:%M:%S'),
+            str(data['user_id']),
+            str(data['name']),
+            parser.isoparse(data['start_time']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S'),
+            parser.isoparse(data['end_time']).astimezone(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S'),
             int(data['duration_seconds'])
         ])
         return jsonify({'status': 'success'})
