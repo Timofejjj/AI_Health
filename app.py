@@ -202,7 +202,6 @@ def app_view(user_id):
 def redirect_to_app(user_id):
     return redirect(url_for('app_view', user_id=user_id))
 
-
 # --- API ЭНДПОИНТЫ ---
 
 @app.route('/api/thoughts/<user_id>', methods=['POST', 'GET'])
@@ -310,6 +309,10 @@ def log_sport_activity():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), debug=True)
