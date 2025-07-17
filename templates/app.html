@@ -1,75 +1,305 @@
-{% extends "base.html" %}
-
-{% block content %}
-<div class="app-container">
-
-    <!-- Левая панель для списка мыслей -->
-    <div class="side-pane left-pane" id="thoughts-list-pane">
-        <div class="pane-header">
-            <button class="back-btn" data-action="toggle-left-pane">
-                <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-            <h2>Список мыслей</h2>
-        </div>
-        <div class="pane-content" id="thoughts-list-container"><div class="loader"></div></div>
-    </div>
-
-    <!-- Основной контент (экраны) -->
-    <div class="screen-wrapper">
-        <div class="screen active" id="home">
-            <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
-            <div class="actions-container">
-                <div class="action-item">
-                    <button class="action-btn" data-action="toggle-menu" data-menu="track-activity-menu">Отследить успехи</button>
-                    <div class="popup-menu" id="track-activity-menu">
-                        <button class="menu-item" data-action="navigate" data-target="start-work">Работа</button>
-                        <button class="menu-item" data-action="navigate" data-target="start-sport">Спорт</button>
-                        <button class="menu-item" data-action="navigate" data-target="history">История анализов</button>
-                    </div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Productivity Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Основные элементы интерфейса
+            const appContainer = document.querySelector('.app-container');
+            const screens = document.querySelectorAll('.screen');
+            const leftPane = document.querySelector('.left-pane');
+            const composePanel = document.getElementById('compose-thought-panel');
+            const toast = document.getElementById('toast-notification');
+            
+            // Показать/скрыть боковую панель
+            appContainer.addEventListener('click', (e) => {
+                if (e.target.closest('[data-action="toggle-left-pane"]')) {
+                    leftPane.classList.toggle('visible');
+                }
+                
+                // Показать/скрыть панель ввода мыслей
+                if (e.target.closest('[data-action="toggle-compose-panel"]')) {
+                    composePanel.classList.toggle('open');
+                }
+                
+                // Обработка навигации
+                if (e.target.closest('[data-action="navigate"]')) {
+                    const target = e.target.closest('[data-action="navigate"]').dataset.target;
+                    navigateTo(target);
+                }
+                
+                // Запуск анализа
+                if (e.target.closest('[data-action="run-analysis"]')) {
+                    runAnalysis();
+                }
+                
+                // Отправка мысли
+                if (e.target.closest('[data-action="submit-thought"]')) {
+                    submitThought();
+                }
+                
+                // Показать/скрыть меню
+                if (e.target.closest('[data-action="toggle-menu"]')) {
+                    const menuId = e.target.closest('[data-action="toggle-menu"]').dataset.menu;
+                    const menu = document.getElementById(menuId);
+                    menu.classList.toggle('show');
+                    
+                    // Закрытие других меню
+                    document.querySelectorAll('.popup-menu').forEach(m => {
+                        if (m !== menu) m.classList.remove('show');
+                    });
+                }
+            });
+            
+            // Закрытие меню при клике вне
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.action-item') && !e.target.closest('.popup-menu')) {
+                    document.querySelectorAll('.popup-menu').forEach(m => {
+                        m.classList.remove('show');
+                    });
+                }
+            });
+            
+            // Функция навигации
+            function navigateTo(screenId) {
+                // Скрыть все меню
+                document.querySelectorAll('.popup-menu').forEach(m => {
+                    m.classList.remove('show');
+                });
+                
+                // Найти текущий активный экран
+                const currentActive = document.querySelector('.screen.active');
+                if (currentActive) {
+                    currentActive.classList.remove('active');
+                    currentActive.classList.add('exiting');
+                    
+                    setTimeout(() => {
+                        currentActive.classList.remove('exiting');
+                    }, 400);
+                }
+                
+                // Показать новый экран
+                const newScreen = document.getElementById(screenId);
+                if (newScreen) {
+                    newScreen.classList.add('active');
+                }
+            }
+            
+            // Функция отправки мысли
+            function submitThought() {
+                const textarea = document.getElementById('thought-input');
+                const thought = textarea.value.trim();
+                
+                if (!thought) {
+                    showToast('Мысль не может быть пустой', 'error');
+                    return;
+                }
+                
+                fetch(`/api/thoughts/{{ user_id }}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thought })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        textarea.value = '';
+                        composePanel.classList.remove('open');
+                        showToast('Мысль сохранена!', 'success');
+                    } else {
+                        showToast('Ошибка: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('Сетевая ошибка', 'error');
+                });
+            }
+            
+            // Функция запуска анализа
+            function runAnalysis() {
+                showToast('Анализ запущен...', 'success');
+                
+                fetch(`/api/run_analysis/{{ user_id }}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('Анализ завершен!', 'success');
+                        navigateTo('history');
+                        loadAnalyses();
+                    } else {
+                        showToast('Ошибка: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('Сетевая ошибка', 'error');
+                });
+            }
+            
+            // Показать уведомление
+            function showToast(message, type) {
+                toast.textContent = message;
+                toast.className = `toast ${type || ''}`;
+                toast.classList.add('show');
+                
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }
+            
+            // Загрузка списка мыслей
+            function loadThoughts() {
+                const container = document.getElementById('thoughts-list-container');
+                container.innerHTML = '<div class="loader"></div>';
+                
+                fetch(`/api/thoughts/{{ user_id }}`)
+                    .then(response => response.json())
+                    .then(thoughts => {
+                        container.innerHTML = '';
+                        
+                        if (thoughts.length === 0) {
+                            container.innerHTML = '<p>Нет записанных мыслей</p>';
+                            return;
+                        }
+                        
+                        thoughts.forEach(thought => {
+                            const template = document.getElementById('thought-item-template').content.cloneNode(true);
+                            const date = new Date(thought.timestamp);
+                            template.querySelector('.item-date').textContent = date.toLocaleString('ru-RU');
+                            template.querySelector('.item-content').textContent = thought.content;
+                            container.appendChild(template);
+                        });
+                    });
+            }
+            
+            // Загрузка аналитических отчетов
+            function loadAnalyses() {
+                const container = document.getElementById('analyses-container');
+                if (!container) return;
+                
+                container.innerHTML = '<div class="loader"></div>';
+                
+                fetch(`/api/analyses/{{ user_id }}`)
+                    .then(response => response.json())
+                    .then(analyses => {
+                        container.innerHTML = '';
+                        
+                        if (analyses.length === 0) {
+                            container.innerHTML = '<p>Нет аналитических отчетов</p>';
+                            return;
+                        }
+                        
+                        analyses.forEach(analysis => {
+                            const template = document.getElementById('history-item-template').content.cloneNode(true);
+                            const date = new Date(analysis.analysis_timestamp);
+                            template.querySelector('.item-date').textContent = date.toLocaleString('ru-RU');
+                            template.querySelector('.item-content').innerHTML = analysis.report;
+                            container.appendChild(template);
+                        });
+                    });
+            }
+            
+            // Инициализация
+            leftPane.addEventListener('click', loadThoughts);
+            document.getElementById('history').innerHTML = `
+                <div class="screen-header">
+                    <button class="back-btn" data-action="navigate" data-target="home">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                    <h2>История анализов</h2>
                 </div>
-                <div class="action-item">
-                    <button class="action-btn-icon" data-action="toggle-menu" data-menu="main-menu">+</button>
-                    <div class="popup-menu" id="main-menu">
-                        <button class="menu-item" data-action="navigate" data-target="stats">Статистика</button>
-                        <button class="menu-item" data-action="run-analysis">Запустить анализ</button>
-                         <a href="{{ url_for('login') }}" class="menu-item">Выйти</a>
+                <div class="pane-content" id="analyses-container"><div class="loader"></div></div>
+            `;
+            
+            // Загружаем анализы при открытии страницы истории
+            document.getElementById('history').addEventListener('click', () => {
+                if (document.getElementById('history').classList.contains('active')) {
+                    loadAnalyses();
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Левая панель для списка мыслей -->
+        <div class="side-pane left-pane" id="thoughts-list-pane">
+            <div class="pane-header">
+                <button class="back-btn" data-action="toggle-left-pane">
+                    <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <h2>Список мыслей</h2>
+            </div>
+            <div class="pane-content" id="thoughts-list-container"><div class="loader"></div></div>
+        </div>
+
+        <!-- Основной контент (экраны) -->
+        <div class="screen-wrapper">
+            <div class="screen active" id="home">
+                <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
+                <div class="actions-container">
+                    <div class="action-item">
+                        <button class="action-btn" data-action="toggle-menu" data-menu="track-activity-menu">
+                            <span class="desktop-text">Отследить успехи</span>
+                            <span class="mobile-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            </span>
+                        </button>
+                        <div class="popup-menu" id="track-activity-menu">
+                            <button class="menu-item" data-action="navigate" data-target="start-work">Работа</button>
+                            <button class="menu-item" data-action="navigate" data-target="start-sport">Спорт</button>
+                            <button class="menu-item" data-action="navigate" data-target="history">История анализов</button>
+                        </div>
+                    </div>
+                    <div class="action-item">
+                        <button class="action-btn-icon" data-action="toggle-menu" data-menu="main-menu">+</button>
+                        <div class="popup-menu" id="main-menu">
+                            <button class="menu-item" data-action="navigate" data-target="stats">Статистика</button>
+                            <button class="menu-item" data-action="run-analysis">Запустить анализ</button>
+                            <a href="{{ url_for('login') }}" class="menu-item">Выйти</a>
+                        </div>
                     </div>
                 </div>
             </div>
+            <!-- Другие экраны, которые будут выдвигаться -->
+            <div class="screen" id="start-work"></div>
+            <div class="screen" id="start-sport"></div>
+            <div class="screen" id="timer"></div>
+            <div class="screen" id="stimulus-prompt"></div>
+            <div class="screen" id="break-prompt"></div>
+            <div class="screen" id="history"></div>
+            <div class="screen" id="stats"></div>
         </div>
-        <!-- Другие экраны, которые будут выдвигаться -->
-        <div class="screen" id="start-work"></div>
-        <div class="screen" id="start-sport"></div>
-        <div class="screen" id="timer"></div>
-        <div class="screen" id="stimulus-prompt"></div>
-        <div class="screen" id="break-prompt"></div>
-        <div class="screen" id="history"></div>
-        <div class="screen" id="stats"></div>
+
+        <!-- Нижняя панель для ввода мыслей -->
+        <div class="bottom-panel" id="compose-thought-panel">
+            <div class="panel-handle" data-action="toggle-compose-panel">
+                <svg class="chevron-up" width="24" height="24" viewBox="0 0 24 24"><path d="M18 15l-6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <button class="panel-edit-btn" data-action="toggle-left-pane">
+                <svg width="24" height="24" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7m-7-10l4 4L8 21l-4 1 1-4L14 4z" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="panel-content">
+                <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
+                <button class="screen-button primary" data-action="submit-thought">Отправить</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Нижняя панель для ввода мыслей -->
-    <div class="bottom-panel" id="compose-thought-panel">
-        <div class="panel-handle" data-action="toggle-compose-panel">
-            <svg class="chevron-up" width="24" height="24" viewBox="0 0 24 24"><path d="M18 15l-6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <button class="panel-edit-btn" data-action="toggle-left-pane">
-            <svg width="24" height="24" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7m-7-10l4 4L8 21l-4 1 1-4L14 4z" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="panel-content">
-            <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
-            <button class="screen-button primary" data-action="submit-thought">Отправить</button>
-        </div>
-    </div>
-</div>
+    <!-- Всплывающее уведомление (Toast) -->
+    <div id="toast-notification" class="toast"></div>
 
-<!-- Всплывающее уведомление (Toast) -->
-<div id="toast-notification" class="toast"></div>
-
-<!-- Шаблоны для динамической отрисовки списков -->
-<template id="history-item-template">
-    <div class="list-item"><div class="item-meta">Отчет от <span class="item-date"></span></div><div class="item-content markdown-body"></div></div>
-</template>
-<template id="thought-item-template">
-     <div class="list-item"><div class="item-meta"><span class="item-date"></span></div><p class="item-content"></p></div>
-</template>
-{% endblock %}
+    <!-- Шаблоны для динамической отрисовки списков -->
+    <template id="history-item-template">
+        <div class="list-item"><div class="item-meta">Отчет от <span class="item-date"></span></div><div class="item-content markdown-body"></div></div>
+    </template>
+    <template id="thought-item-template">
+        <div class="list-item"><div class="item-meta"><span class="item-date"></span></div><p class="item-content"></p></div>
+    </template>
+</body>
+</html>
