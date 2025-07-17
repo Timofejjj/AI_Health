@@ -26,15 +26,14 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   width: 100%; height: 100%;
 }
 
-/* На широких экранах делаем вид "мобильного в окне" */
+/* На широких экранах делаем приложение на весь экран */
 @media (min-width: 768px) {
   .app-container {
-    max-width: 420px;
-    height: 95vh;
-    max-height: 850px;
-    margin: 2.5vh auto;
-    border-radius: 24px;
-    box-shadow: var(--shadow-medium);
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
@@ -49,8 +48,33 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   z-index: 100;
   transition: transform 0.4s ease;
 }
-.left-pane { left: 0; transform: translateX(-100%); border-right: 1px solid var(--border-color); }
-.left-pane.visible { transform: translateX(0); }
+.left-pane { 
+  left: 0; 
+  transform: translateX(-90%); /* Частично видима в закрытом состоянии */
+  border-right: 1px solid var(--border-color); 
+}
+.left-pane.visible { 
+  transform: translateX(0); 
+}
+.pane-toggle-arrow {
+  position: absolute;
+  right: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  padding: 8px;
+  cursor: pointer;
+}
+.pane-toggle-arrow .chevron-right {
+  font-size: 18px;
+  color: var(--secondary-text);
+}
+.left-pane.visible .pane-toggle-arrow .chevron-right {
+  transform: rotate(180deg);
+}
 
 /* --- ЭКРАНЫ И НАВИГАЦИЯ --- */
 .screen {
@@ -197,8 +221,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 @media (min-width: 1400px) {
   /* Широкие экраны */
   .app-container {
-    max-width: 500px;
-    max-height: 900px;
+    width: 100vw;
+    height: 100vh;
   }
   
   .side-pane {
