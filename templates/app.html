@@ -3,42 +3,57 @@
 {% block content %}
 <div class="app-container">
 
-    <!-- Левая панель для списка мыслей (выдвигается) -->
+    <!-- Левая панель для списка мыслей -->
     <div class="side-pane left-pane" id="thoughts-list-pane">
         <div class="pane-header">
+            <button class="back-btn" data-action="toggle-left-pane">
+                <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
             <h2>Список мыслей</h2>
-            <!-- Кнопка для закрытия будет здесь -->
         </div>
-        <div class="pane-content" id="thoughts-list-container">
-            <!-- Сюда будут загружаться мысли -->
-            <p>Загрузка...</p>
-        </div>
+        <div class="pane-content" id="thoughts-list-container"><div class="loader"></div></div>
     </div>
 
-    <!-- Основной контейнер для экранов -->
+    <!-- Основной контент (экраны) -->
     <div class="screen-wrapper">
-        
-        <!-- Главный экран (виден по умолчанию) -->
         <div class="screen active" id="home">
-            <h1 class="greeting">...</h1> <!-- Приветствие будет установлено JS -->
+            <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
             <div class="actions-container">
-                <button class="action-btn" data-action="track-activity">Отследить активности</button>
-                <button class="action-btn-icon" data-action="show-main-menu">+</button>
+                <div class="action-item">
+                    <button class="action-btn" data-action="toggle-menu" data-menu="track-activity-menu">Отследить успехи</button>
+                    <div class="popup-menu" id="track-activity-menu">
+                        <button class="menu-item" data-action="navigate" data-target="start-work">Работа</button>
+                        <button class="menu-item" data-action="navigate" data-target="start-sport">Спорт</button>
+                        <button class="menu-item" data-action="navigate" data-target="history">История анализов</button>
+                    </div>
+                </div>
+                <div class="action-item">
+                    <button class="action-btn-icon" data-action="toggle-menu" data-menu="main-menu">+</button>
+                    <div class="popup-menu" id="main-menu">
+                        <button class="menu-item" data-action="navigate" data-target="stats">Статистика</button>
+                        <button class="menu-item" data-action="run-analysis">Запустить анализ</button>
+                         <a href="{{ url_for('login') }}" class="menu-item">Выйти</a>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <!-- Сюда будут вставляться и выдвигаться другие экраны (формы, таймер и т.д.) -->
-        <!-- <div class="screen" id="some-other-screen"></div> -->
-
+        <!-- Другие экраны, которые будут выдвигаться -->
+        <div class="screen" id="start-work"></div>
+        <div class="screen" id="start-sport"></div>
+        <div class="screen" id="timer"></div>
+        <div class="screen" id="stimulus-prompt"></div>
+        <div class="screen" id="break-prompt"></div>
+        <div class="screen" id="history"></div>
+        <div class="screen" id="stats"></div>
     </div>
 
-    <!-- Нижняя панель для ввода мыслей (выдвигается) -->
+    <!-- Нижняя панель для ввода мыслей -->
     <div class="bottom-panel" id="compose-thought-panel">
         <div class="panel-handle" data-action="toggle-compose-panel">
-            <svg class="chevron-up" width="24" height="24" viewBox="0 0 24 24"><path d="M18 15l-6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 12 12)"/></svg>
+            <svg class="chevron-up" width="24" height="24" viewBox="0 0 24 24"><path d="M18 15l-6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <button class="panel-edit-btn" data-action="toggle-left-pane">
-            <svg width="24" height="24" viewBox="0 0 24 24"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7m-7-10l4 4L8 21l-4 1 1-4L14 4z" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="panel-content">
             <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
@@ -46,4 +61,15 @@
         </div>
     </div>
 </div>
+
+<!-- Всплывающее уведомление (Toast) -->
+<div id="toast-notification" class="toast"></div>
+
+<!-- Шаблоны для динамической отрисовки списков -->
+<template id="history-item-template">
+    <div class="list-item"><div class="item-meta">Отчет от <span class="item-date"></span></div><div class="item-content markdown-body"></div></div>
+</template>
+<template id="thought-item-template">
+     <div class="list-item"><div class="item-meta"><span class="item-date"></span></div><p class="item-content"></p></div>
+</template>
 {% endblock %}
