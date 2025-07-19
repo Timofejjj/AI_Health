@@ -48,8 +48,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
-  top: 30px;         /* Requirement: top 20px */
-  bottom: 30px;      /* Requirement: bottom 20px */
+  top: 45px;         /* Requirement: top 20px */
+  bottom: 45px;      /* Requirement: bottom 20px */
   height: auto;
   left: 0;
   width: 33vw;
