@@ -48,8 +48,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
-  top: 20px;         /* Requirement: top 20px */
-  bottom: 20px;      /* Requirement: bottom 20px */
+  top: 30px;         /* Requirement: top 20px */
+  bottom: 30px;      /* Requirement: bottom 20px */
   height: auto;
   left: 0;
   width: 33vw;
@@ -135,7 +135,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 /* --- НИЖНЯЯ ПАНЕЛЬ --- */
 .bottom-panel {
   position: absolute;
-  left: 30px; /* Requirement: No intersection */
+  left: 50px; /* Requirement: No intersection */
   right: 30px; /* Requirement: No intersection */
   bottom: 0;
   width: auto;
