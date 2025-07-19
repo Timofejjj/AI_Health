@@ -142,21 +142,36 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* --- НИЖНЯЯ ПАНЕЛЬ --- */
 .bottom-panel {
+  /* Ваши текущие стили */
   position: absolute;
-  left: 50px; /* Requirement: No intersection */
-  right: 30px; /* Requirement: No intersection */
+  left: 50px;
+  right: 30px;
   bottom: 0;
   width: auto;
   background-color: #ebeceb;
   border-top-left-radius: 24px;
   border-top-right-radius: 24px;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.07);
-  transform: translateY(calc(100% - 40px)); /* Requirement: 40px closed height */
+  transform: translateY(calc(100% - 40px));
   transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   z-index: 50;
-  height: calc(100vh - 30px); /* Requirement: Open until top is 30px */
+  height: calc(100vh - 30px);
 }
 
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+  .bottom-panel {
+    left: 10px; /* Меньший отступ слева */
+    right: 10px; /* Меньший отступ справа */
+    transform: translateY(calc(100% - 30px)); /* Меньшая видимая часть */
+  }
+  
+  /* Дополнительно можно сделать панель более доступной */
+  .bottom-panel:hover,
+  .bottom-panel:active {
+    transform: translateY(0); /* Полностью показывать при взаимодействии */
+  }
+}
 
 /* MODIFICATION 4: Bottom panel open state */
 .bottom-panel.open {
