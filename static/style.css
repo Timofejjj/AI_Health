@@ -63,9 +63,10 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 @media (max-width: 768px) {
   .left-pane {
-    width: 80vw; /* шире на мобильных */
-    max-width: none; /* убираем ограничение */
-    transform: translateX(calc(-100% + 30px)); /* меньше видимой части */
+    width: 80vw;
+    max-width: none;
+    transform: translateX(calc(-100% + 30px));
+    bottom: 40px; 
   }
 }
 
@@ -162,10 +163,11 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
     position: fixed;
     left: 30px;
     right: 10px;
-    transform: translateY(calc(100% - 30px));
+    transform: translateY(calc(100% - 40px));
     height: calc(var(--vh, 1vh) * 100 - 30px);
     max-height: 80vh;
     z-index: 1000;
+    
   }
   
   .bottom-panel:hover,
@@ -176,6 +178,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 .bottom-panel.open {
   transform: translateY(0) !important;
+  
 }
 
 .panel-handle { height: 70px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
