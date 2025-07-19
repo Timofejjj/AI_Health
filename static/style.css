@@ -48,7 +48,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
-  top: 45px;         /* Requirement: top 20px */
+  top: 30px;         /* Requirement: top 20px */
   bottom: 45px;      /* Requirement: bottom 20px */
   height: auto;
   left: 0;
@@ -142,7 +142,6 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* --- НИЖНЯЯ ПАНЕЛЬ --- */
 .bottom-panel {
-  /* Ваши текущие стили */
   position: absolute;
   left: 50px;
   right: 30px;
@@ -158,24 +157,25 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   height: calc(100vh - 30px);
 }
 
-/* Адаптация для мобильных */
 @media (max-width: 768px) {
   .bottom-panel {
-    left: 10px; /* Меньший отступ слева */
-    right: 10px; /* Меньший отступ справа */
-    transform: translateY(calc(100% - 30px)); /* Меньшая видимая часть */
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    transform: translateY(calc(100% - 30px));
+    height: calc(var(--vh, 1vh) * 100 - 30px);
+    max-height: 80vh;
+    z-index: 1000;
   }
   
-  /* Дополнительно можно сделать панель более доступной */
   .bottom-panel:hover,
   .bottom-panel:active {
-    transform: translateY(0); /* Полностью показывать при взаимодействии */
+    transform: translateY(0);
   }
 }
 
-/* MODIFICATION 4: Bottom panel open state */
 .bottom-panel.open {
-  transform: translateY(0); /* Slides the panel into view */
+  transform: translateY(0) !important;
 }
 
 .panel-handle { height: 70px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
