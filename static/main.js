@@ -1,3 +1,4 @@
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // 1. Динамическое приветствие в зависимости от времени суток
@@ -28,6 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Функция для переключения левой панели
     function toggleLeftPane() {
+        // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+        // Если мы собираемся открыть левую панель, сначала убедимся, что нижняя закрыта.
+        const isOpening = !leftPane.classList.contains('visible');
+        if (isOpening && composePanel.classList.contains('open')) {
+            // Закрываем нижнюю панель
+            composePanel.classList.remove('open');
+        }
+        // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
         leftPane.classList.toggle('visible');
         if (leftPane.classList.contains('visible')) {
             loadThoughts();
@@ -36,6 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Функция для переключения нижней панели
     function toggleComposePanel() {
+        // --- ИЗМЕНЕНИЕ НАЧАЛО ---
+        // Если мы собираемся открыть нижнюю панель, сначала убедимся, что левая закрыта.
+        const isOpening = !composePanel.classList.contains('open');
+        if (isOpening && leftPane.classList.contains('visible')) {
+            // Закрываем левую панель
+            leftPane.classList.remove('visible');
+        }
+        // --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
         composePanel.classList.toggle('open');
         if (composePanel.classList.contains('open')) {
             document.getElementById('thought-input').focus();
@@ -45,11 +64,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Загрузка списка мыслей
     async function loadThoughts() {
         const userId = document.body.dataset.userId;
+        const thoughtsList = document.getElementById('thoughts-list');
+        // Показываем загрузчик
+        thoughtsList.innerHTML = '<div class="loader"></div>'; 
         try {
             const response = await fetch(`/api/thoughts/${userId}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const thoughts = await response.json();
-            const thoughtsList = document.getElementById('thoughts-list');
-            thoughtsList.innerHTML = '';
+            
+            // Очищаем загрузчик
+            thoughtsList.innerHTML = ''; 
+
+            if (thoughts.length === 0) {
+                thoughtsList.innerHTML = '<p class="empty-list-message">Записей пока нет.</p>';
+                return;
+            }
+
             thoughts.forEach(thought => {
                 const item = document.createElement('div');
                 item.classList.add('list-item');
@@ -61,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch (error) {
             console.error('Ошибка загрузки мыслей:', error);
+            thoughtsList.innerHTML = '<p class="error-message">Не удалось загрузить записи.</p>';
         }
     }
 
@@ -79,37 +112,41 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 thoughtInput.value = '';
                 toggleComposePanel(); // Закрываем панель
-                if (leftPane.classList.contains('visible')) {
-                    loadThoughts(); // Обновляем список, если панель открыта
-                }
+                // Обновлять список мыслей не нужно, так как левая панель гарантированно закрыта
             } else {
                 console.error('Ошибка отправки мысли');
+                // Можно добавить уведомление для пользователя
             }
         } catch (error) {
             console.error('Ошибка отправки мысли:', error);
+            // Можно добавить уведомление для пользователя
         }
     }
 
     // Назначаем обработчики на кнопки
     document.body.addEventListener('click', (e) => {
-        const target = e.target.closest('[data-action]');
-        if (!target) return;
+        // Используем .closest() для делегирования событий
+        const toggleLeftPaneBtn = e.target.closest('[data-action="toggle-left-pane"]');
+        const toggleComposePanelBtn = e.target.closest('[data-action="toggle-compose-panel"]');
+        const submitThoughtBtn = e.target.closest('[data-action="submit-thought"]');
 
-        const action = target.dataset.action;
-
-        if (action === 'toggle-left-pane') {
+        if (toggleLeftPaneBtn) {
             toggleLeftPane();
+            return;
         }
 
-        if (action === 'toggle-compose-panel') {
+        if (toggleComposePanelBtn) {
             toggleComposePanel();
+            return;
         }
 
-        if (action === 'submit-thought') {
+        if (submitThoughtBtn) {
             submitThought();
+            return;
         }
     });
 
     // --- Инициализация ---
     setGreeting();
 });
+
