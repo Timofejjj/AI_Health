@@ -61,6 +61,14 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   background-color: #ebeceb; /* Requirement: same color as bottom */
 }
 
+@media (max-width: 768px) {
+  .left-pane {
+    width: 80vw; /* шире на мобильных */
+    max-width: none; /* убираем ограничение */
+    transform: translateX(calc(-100% + 30px)); /* меньше видимой части */
+  }
+}
+
 .left-pane.visible {
   transform: translateX(0); /* Slides fully into view */
 }
