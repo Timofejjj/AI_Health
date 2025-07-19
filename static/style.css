@@ -11,7 +11,7 @@
   --font-family: 'Inter', -apple-system, sans-serif;
   --shadow-light: 0 4px 12px rgba(0, 0, 0, 0.05);
   --shadow-medium: 0 6px 16px rgba(0, 0, 0, 0.08);
-  --border-radius: 16px; /* Increased for a softer look */
+  --border-radius: 34px; /* Increased for a softer look */
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
