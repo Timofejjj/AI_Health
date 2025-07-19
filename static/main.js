@@ -149,4 +149,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Инициализация ---
     setGreeting();
 });
-
