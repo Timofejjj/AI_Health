@@ -160,7 +160,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 @media (max-width: 768px) {
   .bottom-panel {
     position: fixed;
-    left: 10px;
+    left: 30px;
     right: 10px;
     transform: translateY(calc(100% - 30px));
     height: calc(var(--vh, 1vh) * 100 - 30px);
