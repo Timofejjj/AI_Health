@@ -49,7 +49,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
   top: 30px;       
-  bottom: 55px;      
+  bottom: 65px;      
   height: auto;
   left: 0;
   width: 40vw;
@@ -216,7 +216,31 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 .screen-button.secondary { background-color: var(--surface-color); color: var(--primary-text); }
 .screen-button.danger { background-color: var(--danger-color); color: white;}
 
-.pane-content { flex-grow: 1; overflow-y: auto; padding: 16px; }
+.pane-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 16px;
+  
+  /* Новые стили для скроллбара */
+  scrollbar-gutter: stable;
+  margin-right: -10px; /* Сдвигаем скроллбар влево */
+  padding-right: 26px; /* Компенсируем отступ (16px + 10px) */
+}
+
+/* Стилизация самого скроллбара */
+.pane-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pane-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.pane-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .list-item { background-color: #fff; border-radius: var(--border-radius); padding: 16px; margin-bottom: 12px; border: 1px solid var(--border-color); }
 .item-meta { font-size: 13px; color: var(--secondary-text); margin-bottom: 8px; }
 .item-content { font-size: 15px; line-height: 1.5; }
