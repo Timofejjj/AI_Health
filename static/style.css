@@ -126,11 +126,77 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 .back-btn { background: none; border: none; cursor: pointer; padding: 8px; color: var(--primary-text); position: absolute; left: 16px; top: 50%; transform: translateY(-50%); }
 
 /* --- ГЛАВНЫЙ ЭКРАН (Новый дизайн) --- */
-#home .greeting { font-size: 28px; font-weight: 700; text-align: center; margin-bottom: 40px; }
-.actions-container { display: flex; gap: 12px; }
-.action-item { position: relative; }
-.action-btn { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 50px; padding: 10px 20px; font-size: 16px; cursor: pointer; font-weight: 500; color: var(--primary-text); }
-.action-btn-icon { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 50%; width: 42px; height: 42px; font-size: 20px; cursor: pointer; }
+#home .greeting {
+  font-size: 100px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 40px;
+  color: #ececec;
+}
+
+/* --- Кнопки --- */
+.actions-container {
+  display: flex;
+  gap: 16px; /* Увеличил расстояние между кнопками */
+  justify-content: flex-start; /* Выравнивание по левому краю */
+  width: 100%; /* Занимает всю доступную ширину */
+  max-width: 500px; /* Ограничение максимальной ширины */
+  margin: 20px 0 0 0; /* Отступ сверху и убраны боковые */
+  padding-left: 0; /* Убираем левый padding если был */
+}
+
+.action-item {
+  position: relative;
+}
+
+.action-btn {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 50px;
+  padding: 14px 28px; /* Увеличил размер */
+  font-size: 18px; /* Увеличил шрифт */
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--primary-text);
+  min-width: 180px; /* Минимальная ширина */
+  text-align: center; /* Текст по центру кнопки */
+  transition: all 0.2s ease; /* Плавные эффекты */
+}
+
+.action-btn-icon {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 56px; /* Увеличил размер */
+  height: 56px; /* Увеличил размер */
+  font-size: 24px; /* Увеличил иконку */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease; /* Плавные эффекты */
+}
+
+/* Эффекты при наведении */
+.action-btn:hover, 
+.action-btn-icon:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Для мобильной версии */
+@media (max-width: 768px) {
+  .actions-container {
+    flex-direction: column; /* Кнопки в столбик */
+    align-items: flex-start; /* Выравнивание по левому краю */
+  }
+  
+  .action-btn {
+    width: 100%; /* На всю ширину */
+    max-width: 280px; /* Но не шире 280px */
+  }
+}
+/* ------ */
 
 /* Всплывающее меню */
 .popup-menu {
