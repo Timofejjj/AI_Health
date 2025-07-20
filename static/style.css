@@ -129,22 +129,25 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 #home {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start; /* Меняем на выравнивание по верху */
-  min-height: auto; /* Убираем фиксированную высоту */
-  padding: 150px 20px 0; /* 40px отступ сверху, 20px по бокам */
+  align-items: center; /* Центрируем по горизонтали */
+  justify-content: flex-start; /* Оставляем прижатым к верху */
+  min-height: auto;
+  padding: 150px 20px 0; /* Сохраняем отступ сверху */
   box-sizing: border-box;
-  margin-top: 0; /* Убираем возможные внешние отступы */
-  align-items: flex-start;
+  margin-top: 0;
+  width: 100%;
 }
+
 
 #home .greeting {
   font-size: 60px;
   font-weight: 700;
-  text-align: left;
-  margin: 0 0 60px 0; /* Уменьшаем нижний отступ */
+  text-align: center; /* Центрируем текст */
+  margin: 0 0 60px 0;
   color: #545454;
   max-width: 800px;
-  padding-left: 100px; /* Добавляем отступ слева */
+  width: 100%;
+  padding-left: 0; /* Убираем левый отступ */
 }
 
 
@@ -152,12 +155,11 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 .actions-container {
   display: flex;
   gap: 16px;
-  justify-content: flex-start;
+  justify-content: center; /* Центрируем кнопки */
   width: 100%;
   max-width: 500px;
-  margin: 0; /* Убираем верхний отступ, так как он теперь в общем контейнере */
-  padding-left: 0;
-  padding-left: 20px; /* Такой же отступ как у текста */
+  margin: 0;
+  padding-left: 0; /* Убираем левый отступ */
 }
 
 /* Остальные стили кнопок остаются без изменений */
