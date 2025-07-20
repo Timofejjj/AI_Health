@@ -153,7 +153,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   border-top-left-radius: 24px;
   border-top-right-radius: 24px;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.07);
-  transform: translateY(calc(100% - 40px));
+  transform: translateY(calc(100% - 50px));
   transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   z-index: 50;
   height: calc(100vh - 30px);
@@ -166,7 +166,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
     right: 25px;
     transform: translateY(calc(100% - 50px));
     height: calc(var(--vh, 1vh) * 100 - 30px);
-    max-height: 80vh;
+    max-height: 80vh;цй
     z-index: 1000;
   }
 
