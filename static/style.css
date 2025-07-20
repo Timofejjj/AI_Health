@@ -74,7 +74,6 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   transform: translateX(0); /* Slides fully into view */
 }
 
-css
 .pane-toggle-arrow {
   position: absolute;
   right: -1px;
