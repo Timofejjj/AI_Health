@@ -296,3 +296,33 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
     justify-content: center;
   }
 }
+
+/* СТРЕЛКИ */
+
+
+/* Для иконки левой панели */
+.pane-toggle-arrow img.toggle-icon {
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+    transition: transform 0.3s ease; /* Добавляем плавную анимацию */
+}
+
+/* Для иконки нижней панели */
+.panel-handle img.toggle-icon {
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+    transform: rotate(90deg); /* Изначально стрелка смотрит вверх */
+    transition: transform 0.3s ease; /* Добавляем плавную анимацию */
+}
+
+/* Состояние при открытой левой панели */
+.left-pane.visible .pane-toggle-arrow img.toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* Состояние при открытой нижней панели */
+.bottom-panel.open .panel-handle img.toggle-icon {
+    transform: rotate(270deg); /* Поворот на 180° от исходного положения (90° + 180° = 270°) */
+}
