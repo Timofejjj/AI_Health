@@ -141,8 +141,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; text-decoration: none; color: var(--primary-text); background: none; border: none; width: 100%; text-align: left; font-size: 16px; font-family: inherit; font-weight: 500; cursor: pointer; }
 .menu-item:hover { background-color: var(--surface-color); }
 
+
 /* --- НИЖНЯЯ ПАНЕЛЬ --- */
-/* Основные стили нижней панели */
 .bottom-panel {
   position: absolute;
   left: 65px;
@@ -153,37 +153,38 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   border-top-left-radius: 24px;
   border-top-right-radius: 24px;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.07);
-  transform: translateY(calc(100% - 40px)); /* По умолчанию скрыта */
+  transform: translateY(calc(100% - 40px));
   transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   z-index: 50;
   height: calc(100vh - 30px);
 }
 
-/* Стили для открытого состояния */
+@media (max-width: 768px) {
+  .bottom-panel {
+    position: fixed;
+    left: 45px;
+    right: 10px;
+    transform: translateY(calc(100% - 40px));
+    height: calc(var(--vh, 1vh) * 100 - 30px);
+    max-height: 80vh;
+    z-index: 1000;
+  }
+  
+  .bottom-panel.open {
+    transform: translateY(calc(100% - 40px));
+  }
+}
+
 .bottom-panel.open {
-  transform: translateY(0) !important; /* Показываем панель */
+  transform: translateY(0) !important;
+  
 }
 
-/* Стили ручки для открытия/закрытия */
-.panel-handle {
-  height: 70px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  cursor: pointer;
-}
-
-/* Стили содержимого панели */
-.panel-content {
-  padding: 0 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  height: calc(100% - 70px);
-}
-
-/* Стили текстового поля ввода */
+.panel-handle { height: 70px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
+.panel-handle .chevron-up { transition: transform 0.4s ease; color: var(--secondary-text); transform: rotate(180deg); }
+.bottom-panel.open .panel-handle .chevron-up { transform: rotate(0deg); }
+.panel-edit-btn { position: absolute; right: 24px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--secondary-text); padding: 8px; }
+.panel-content { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 16px; height: calc(100% - 70px); }
 #thought-input {
   flex-grow: 1;
   resize: none;
@@ -192,21 +193,10 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   padding: 12px;
   font-family: inherit;
   font-size: 16px;
-  background-color: var(--bg-color);
+  background-color: transparent; /* Прозрачный фон */
 }
 
-/* Стили кнопки отправки */
-.screen-button.primary {
-  background-color: var(--accent-color);
-  color: white;
-  border: none;
-  padding: 14px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: var(--border-radius);
-  width: 100%;
-}
+.screen-button.primary { background-color: var(--accent-color); color: white; border:none; padding: 14px; font-size: 16px; font-weight: 600; cursor:pointer; border-radius: var(--border-radius); width: 100%;}
 
 /* --- ОБЩИЕ СТИЛИ ФОРМ, ТАЙМЕРА, СПИСКОВ --- */
 .form-content { width: 100%; display: flex; flex-direction: column; gap: 20px; margin-top: 60px; flex-grow: 1; justify-content: flex-start; padding-top: 20px; }
