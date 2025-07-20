@@ -74,18 +74,24 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   transform: translateX(0); /* Slides fully into view */
 }
 
+css
 .pane-toggle-arrow {
   position: absolute;
   right: -1px;
   top: 50%;
   transform: translateY(-50%);
-  background-color: #ebeceb; /* Match panel color */
-  border: 1px solid var(--border-color);
-  border-left: none;
-  border-radius: 0 12px 12px 0;
+  background-color: transparent; /* Убираем фон */
+  border: none; /* Убираем границу */
   padding: 8px;
   cursor: pointer;
   z-index: 1;
+}
+
+/* Если нужно оставить только иконку без фона */
+.pane-toggle-arrow img.toggle-icon {
+  width: 20px;
+  height: 20px;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1)); /* Добавляем тень для лучшей видимости */
 }
 
 .pane-toggle-arrow .chevron-right {
@@ -352,8 +358,6 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 }
 
 /* СТРЕЛКИ */
-
-
 /* Для иконки левой панели */
 .pane-toggle-arrow img.toggle-icon {
     width: 20px;
