@@ -169,8 +169,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
     z-index: 1000;
   }
   
-  .bottom-panel:not(.open):hover,
-  .bottom-panel:not(.open):active {
+  .bottom-panel.open {
     transform: translateY(calc(100% - 40px));
   }
 }
