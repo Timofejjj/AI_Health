@@ -49,7 +49,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
   top: 30px;       
-  bottom: 65px;      
+  bottom: 75px;      
   height: auto;
   left: 0;
   width: 40vw;
@@ -223,7 +223,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   
   /* Новые стили для скроллбара */
   scrollbar-gutter: stable;
-  margin-left: -10px; /* Сдвигаем скроллбар влево */
+  margin-left: -20px; /* Сдвигаем скроллбар влево */
   padding-left: 26px; /* Компенсируем отступ (16px + 10px) */
 }
 
