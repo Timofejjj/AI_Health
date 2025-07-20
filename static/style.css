@@ -126,25 +126,38 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 .back-btn { background: none; border: none; cursor: pointer; padding: 8px; color: var(--primary-text); position: absolute; left: 16px; top: 50%; transform: translateY(-50%); }
 
 /* --- ГЛАВНЫЙ ЭКРАН (Новый дизайн) --- */
+#home {
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Центрируем блок по вертикали */
+  min-height: 70vh; /* Поднимаем блок выше на странице */
+  padding: 0 20px; /* Боковые отступы */
+  box-sizing: border-box;
+}
+
 #home .greeting {
   font-size: 60px;
   font-weight: 700;
-  text-align: center;
+  text-align: left; /* Выравнивание по левому краю */
   margin-bottom: 40px;
   color: #545454;
+  max-width: 800px; /* Ограничение ширины текста */
+  margin-left: 0; /* Убираем автоматические отступы */
+  padding-left: 0; /* Убираем padding если был */
 }
 
 /* --- Кнопки --- */
 .actions-container {
   display: flex;
-  gap: 16px; /* Увеличил расстояние между кнопками */
-  justify-content: flex-start; /* Выравнивание по левому краю */
-  width: 100%; /* Занимает всю доступную ширину */
-  max-width: 500px; /* Ограничение максимальной ширины */
-  margin: 20px 0 0 0; /* Отступ сверху и убраны боковые */
-  padding-left: 0; /* Убираем левый padding если был */
+  gap: 16px;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 500px;
+  margin: 0; /* Убираем верхний отступ, так как он теперь в общем контейнере */
+  padding-left: 0;
 }
 
+/* Остальные стили кнопок остаются без изменений */
 .action-item {
   position: relative;
 }
@@ -153,31 +166,30 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   background-color: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 50px;
-  padding: 14px 28px; /* Увеличил размер */
-  font-size: 18px; /* Увеличил шрифт */
+  padding: 14px 28px;
+  font-size: 18px;
   cursor: pointer;
   font-weight: 500;
   color: var(--primary-text);
-  min-width: 180px; /* Минимальная ширина */
-  text-align: center; /* Текст по центру кнопки */
-  transition: all 0.2s ease; /* Плавные эффекты */
+  min-width: 180px;
+  text-align: center;
+  transition: all 0.2s ease;
 }
 
 .action-btn-icon {
   background-color: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 50%;
-  width: 56px; /* Увеличил размер */
-  height: 56px; /* Увеличил размер */
-  font-size: 24px; /* Увеличил иконку */
+  width: 56px;
+  height: 56px;
+  font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease; /* Плавные эффекты */
+  transition: all 0.2s ease;
 }
 
-/* Эффекты при наведении */
 .action-btn:hover, 
 .action-btn-icon:hover {
   transform: translateY(-2px);
@@ -186,19 +198,28 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* Для мобильной версии */
 @media (max-width: 768px) {
-  .actions-container {
-    flex-direction: column; /* Кнопки в столбик */
-    align-items: flex-start; /* Выравнивание по левому краю */
-  }
-  
-  .action-btn {
-    width: 100%; /* На всю ширину */
-    max-width: 280px; /* Но не шире 280px */
+  #home {
+    min-height: auto;
+    padding-top: 40px; /* Добавляем отступ сверху */
+    justify-content: flex-start; /* Выравниваем по верху */
   }
   
   #home .greeting {
     font-size: 40px;
     margin-bottom: 30px;
+    text-align: center; /* Центрируем текст на мобильных */
+    max-width: 100%;
+  }
+  
+  .actions-container {
+    flex-direction: column;
+    align-items: center; /* Центрируем кнопки на мобильных */
+    max-width: 100%;
+  }
+  
+  .action-btn {
+    width: 100%;
+    max-width: 280px;
   }
 }
 /* ------ */
