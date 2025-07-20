@@ -189,10 +189,15 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   flex-grow: 1;
   resize: none;
   border: none;
+  border-radius: 0;
   padding: 12px;
   font-family: inherit;
   font-size: 16px;
-  background-color: transparent; /* Прозрачный фон */
+  background-color: transparent;
+}
+
+#thought-input:focus {
+  outline: none;
 }
 
 .screen-button.primary { background-color: var(--accent-color); color: white; border:none; padding: 14px; font-size: 16px; font-weight: 600; cursor:pointer; border-radius: var(--border-radius); width: 100%;}
