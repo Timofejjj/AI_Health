@@ -131,7 +131,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   flex-direction: column;
   justify-content: flex-start; /* Меняем на выравнивание по верху */
   min-height: auto; /* Убираем фиксированную высоту */
-  padding: 100px 20px 0; /* 40px отступ сверху, 20px по бокам */
+  padding: 150px 20px 0; /* 40px отступ сверху, 20px по бокам */
   box-sizing: border-box;
   margin-top: 0; /* Убираем возможные внешние отступы */
   align-items: flex-start;
@@ -144,7 +144,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   margin: 0 0 60px 0; /* Уменьшаем нижний отступ */
   color: #545454;
   max-width: 800px;
-  padding-left: 20px; /* Добавляем отступ слева */
+  padding-left: 100px; /* Добавляем отступ слева */
 }
 
 
