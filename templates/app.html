@@ -11,23 +11,49 @@
     <div class="app-container">
         <!-- Левая панель для списка мыслей -->
         <div id="thoughts-list-pane" class="side-pane left-pane">
+
             <div class="pane-content">
                 <div id="thoughts-list"></div>
             </div>
+            <!-- ИЗМЕНЕНИЕ НАЧАЛО -->
             <div class="pane-toggle-arrow" data-action="toggle-left-pane">
-                <!-- ИЗМЕНЕНИЕ ПУТИ -->
                 <img src="/static/img/free-icon-right-arrow-angle-54833.png" alt="Открыть панель" class="toggle-icon">
+            </div>
+            <!-- ИЗМЕНЕНИЕ КОНЕЦ -->
+        </div>
+
+        <!-- Основной контент (экраны) -->
+        <div class="screen-wrapper">
+            <div id="home" class="screen active">
+                <h1 class="greeting">{{ greeting }}, {{ user_id }}</h1>
+                <div class="actions-container">
+                    <div class="action-item">
+                        <button class="action-btn">Отследить успехи</button>
+                        <div class="popup-menu">
+                            <button class="menu-item">Работа</button>
+                            <button class="menu-item">Спорт</button>
+                            <button class="menu-item">История анализов</button>
+                        </div>
+                    </div>
+                    <div class="action-item">
+                        <button class="action-btn-icon" data-action="toggle-compose-panel">+</button>
+                        <div class="popup-menu">
+                            <button class="menu-item">Статистика</button>
+                            <button class="menu-item">Запустить анализ</button>
+                            <button class="menu-item">Выйти</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- ... остальной код ... -->
-
         <!-- Нижняя панель для ввода мыслей -->
         <div id="compose-thought-panel" class="bottom-panel">
+            <!-- ИЗМЕНЕНИЕ НАЧАЛО -->
             <div class="panel-handle" data-action="toggle-compose-panel">
-                 <!-- ИЗМЕНЕНИЕ ПУТИ -->
                  <img src="/static/img/free-icon-right-arrow-angle-5483n3.png" alt="Открыть панель ввода" class="toggle-icon">
             </div>
+            <!-- ИЗМЕНЕНИЕ КОНЕЦ -->
             <div class="panel-content">
                 <textarea id="thought-input" placeholder="Что у вас на уме?"></textarea>
                 <button class="screen-button primary" data-action="submit-thought">Отправить</button>
