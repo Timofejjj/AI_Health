@@ -188,8 +188,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 #thought-input {
   flex-grow: 1;
   resize: none;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+  border: none;
   padding: 12px;
   font-family: inherit;
   font-size: 16px;
