@@ -223,8 +223,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   
   /* Новые стили для скроллбара */
   scrollbar-gutter: stable;
-  margin-right: -10px; /* Сдвигаем скроллбар влево */
-  padding-right: 26px; /* Компенсируем отступ (16px + 10px) */
+  margin-left: -10px; /* Сдвигаем скроллбар влево */
+  padding-left: 26px; /* Компенсируем отступ (16px + 10px) */
 }
 
 /* Стилизация самого скроллбара */
