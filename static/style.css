@@ -152,16 +152,19 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 
 /* --- Кнопки --- */
+
 .actions-container {
   display: flex;
   gap: 16px;
-  justify-content: center; /* Центрируем кнопки */
+  justify-content: flex-start; /* Уже установлено */
   width: 100%;
   max-width: 500px;
   margin: 0;
-  padding-left: 0; /* Убираем левый отступ */
+  padding-left: 100px; /* Добавляем отступ слева, как у текста */
+  margin-left: -10px; /* Тонкая настройка выравнивания */
 }
 
+/* Остальные стили остаются без изменений */
 /* Остальные стили кнопок остаются без изменений */
 .action-item {
   position: relative;
