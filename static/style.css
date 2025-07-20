@@ -127,7 +127,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* --- ГЛАВНЫЙ ЭКРАН (Новый дизайн) --- */
 #home .greeting {
-  font-size: 80px;
+  font-size: 60px;
   font-weight: 700;
   text-align: center;
   margin-bottom: 40px;
@@ -197,7 +197,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   }
   
   #home .greeting {
-    font-size: 60px;
+    font-size: 40px;
     margin-bottom: 30px;
   }
 }
