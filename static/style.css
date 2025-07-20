@@ -63,7 +63,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 @media (max-width: 768px) {
   .left-pane {
-    width: 80vw;
+    width: 105vw;
     max-width: none;
     transform: translateX(calc(-100% + 30px));
     bottom: 80px; 
