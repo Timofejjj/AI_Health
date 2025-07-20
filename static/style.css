@@ -163,16 +163,13 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   .bottom-panel {
     position: fixed;
     left: 45px;
-    right: 10px;
-    transform: translateY(calc(100% - 40px));
+    right: 25px;
+    transform: translateY(calc(100% - 50px));
     height: calc(var(--vh, 1vh) * 100 - 30px);
     max-height: 80vh;
     z-index: 1000;
   }
-  
-  .bottom-panel.open {
-    transform: translateY(calc(100% - 40px));
-  }
+
 }
 
 .bottom-panel.open {
