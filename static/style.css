@@ -48,8 +48,8 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* MODIFICATION 2: Left panel styling */
 .left-pane {
-  top: 30px;         /* Requirement: top 20px */
-  bottom: 45px;      /* Requirement: bottom 20px */
+  top: 30px;       
+  bottom: 45px;      
   height: auto;
   left: 0;
   width: 33vw;
@@ -63,10 +63,10 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 @media (max-width: 768px) {
   .left-pane {
-    width: 105vw;
+    width: 80vw;
     max-width: none;
     transform: translateX(calc(-100% + 30px));
-    bottom: 80px; 
+    bottom: 105px; 
   }
 }
 
