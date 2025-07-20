@@ -167,12 +167,11 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
     height: calc(var(--vh, 1vh) * 100 - 30px);
     max-height: 80vh;
     z-index: 1000;
-    
   }
   
-  .bottom-panel:hover,
-  .bottom-panel:active {
-    transform: translateY(0);
+  .bottom-panel:not(.open):hover,
+  .bottom-panel:not(.open):active {
+    transform: translateY(calc(100% - 40px));
   }
 }
 
