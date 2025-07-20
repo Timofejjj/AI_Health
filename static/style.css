@@ -127,11 +127,11 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* --- ГЛАВНЫЙ ЭКРАН (Новый дизайн) --- */
 #home .greeting {
-  font-size: 100px;
+  font-size: 80px;
   font-weight: 700;
   text-align: center;
   margin-bottom: 40px;
-  color: #ececec;
+  color: #545454;
 }
 
 /* --- Кнопки --- */
@@ -194,6 +194,11 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
   .action-btn {
     width: 100%; /* На всю ширину */
     max-width: 280px; /* Но не шире 280px */
+  }
+  
+  #home .greeting {
+    font-size: 60px;
+    margin-bottom: 30px;
   }
 }
 /* ------ */
