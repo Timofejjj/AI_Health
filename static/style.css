@@ -323,5 +323,5 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* Состояние при открытой нижней панели */
 .bottom-panel.open .panel-handle img.toggle-icon {
-    transform: rotate(270deg); /* Поворот на 180° от исходного положения (90° + 180° = 270°) */
+    transform: rotate(180deg); /* Поворот на 180° от исходного положения (90° + 180° = 270°) */
 }
