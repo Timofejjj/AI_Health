@@ -302,18 +302,17 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 
 /* Для иконки левой панели */
 .pane-toggle-arrow img.toggle-icon {
-    width: 10px;
-    height: 10px;
+    width: 20px;
+    height: 20px;
     object-fit: contain;
     transition: transform 0.3s ease; /* Добавляем плавную анимацию */
 }
 
 /* Для иконки нижней панели */
 .panel-handle img.toggle-icon {
-    width: 10px;
-    height: 10px;
+    width: 20px;
+    height: 20px;
     object-fit: contain;
-    transform: rotate(90deg); /* Изначально стрелка смотрит вверх */
     transition: transform 0.3s ease; /* Добавляем плавную анимацию */
 }
 
