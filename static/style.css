@@ -200,7 +200,7 @@ body { font-family: var(--font-family); background-color: #e9ebee; color: var(--
 @media (max-width: 768px) {
   #home {
     min-height: auto;
-    padding-top: 40px; /* Добавляем отступ сверху */
+    padding-top: 70px; /* Добавляем отступ сверху */
     justify-content: flex-start; /* Выравниваем по верху */
   }
   
