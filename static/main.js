@@ -125,13 +125,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Назначаем обработчики на кнопки
     document.body.addEventListener('click', (e) => {
-        // Используем .closest() для делегирования событий
-        const toggleLeftPaneBtn = e.target.closest('[data-action="toggle-left-pane"]');
         const toggleComposePanelBtn = e.target.closest('[data-action="toggle-compose-panel"]');
-        const submitThoughtBtn = e.target.closest('[data-action="submit-thought"]');
-
-        if (toggleLeftPaneBtn) {
-            toggleLeftPane();
+        const panelHandle = e.target.closest('.panel-handle');
+    
+        if (toggleComposePanelBtn || panelHandle) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleComposePanel();
             return;
         }
 
