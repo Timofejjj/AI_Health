@@ -1,3 +1,24 @@
+// Обработчики события  нажатия на кнопку
+document.querySelectorAll('.action-btn, .action-btn-icon').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = btn.nextElementSibling;
+    if (menu.classList.contains('popup-menu')) {
+      document.querySelectorAll('.popup-menu').forEach(m => m.classList.remove('show'));
+      menu.classList.toggle('show');
+    }
+  });
+});
+
+//------------------------------------------------------------------
+
+
+// Закрывать меню при клике вне его
+document.addEventListener('click', () => {
+  document.querySelectorAll('.popup-menu').forEach(m => m.classList.remove('show'));
+});
+
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // 1. Динамическое приветствие в зависимости от времени суток
