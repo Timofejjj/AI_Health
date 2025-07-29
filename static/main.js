@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (button.textContent.trim() === 'Выйти') {
             button.addEventListener('click', function() {
                 // Перенаправляем на страницу входа
-                window.location.href = 'login.html';
+                window.location.href = '/templates/login.html';
             });
         }
     });
