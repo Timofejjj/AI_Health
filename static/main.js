@@ -10,15 +10,80 @@ document.querySelectorAll('.action-btn, .action-btn-icon').forEach(btn => {
   });
 });
 
+/**
+ * Основной скрипт приложения, который запускается после загрузки страницы.
+ */
 document.addEventListener('DOMContentLoaded', function() {
-    // Находим кнопку "Выйти" по её уникальному идентификатору
-    const logoutButton = document.getElementById('logout-btn');
+    
+    // --------------------------------------------------------------------------
+    // Шаг 1: Код для кнопки "Выйти" УДАЛЕН. 
+    // Вместо него используется простая ссылка <a href="/logout"> в HTML.
+    // Это более правильный и надежный подход.
+    // --------------------------------------------------------------------------
 
-    if (logoutButton) {
-        logoutButton.addEventListener('click', function() {
-            // Перенаправляем на серверный маршрут для выхода
-            window.location.href = '/logout';
-        });
+    console.log("Страница загружена. Запускаем приложение.");
+
+    // Вызываем главную функцию, которая загрузит все необходимые данные.
+    loadInitialData();
+
+
+    /**
+     * Функция для загрузки и отображения мыслей пользователя.
+     * Именно сюда мы помещаем ваш код `fetch`.
+     */
+    function loadInitialData() {
+        
+        // Находим на странице контейнер, куда будем выводить мысли.
+        // Убедитесь, что в вашем home.html есть элемент с id="thoughts-container"
+        const thoughtsContainer = document.getElementById('thoughts-container');
+        
+        // Если контейнера нет на странице, прекращаем выполнение, чтобы избежать ошибок.
+        if (!thoughtsContainer) {
+            console.error('Контейнер для мыслей #thoughts-container не найден!');
+            return;
+        }
+
+        // --- Вот ваш код, интегрированный в функцию ---
+        fetch('/api/thoughts')
+            .then(response => {
+                // Если сессия истекла, сервер вернет 401 Unauthorized
+                if (response.status === 401) {
+                    // Немедленно перенаправляем на страницу входа
+                    window.location.href = '/login';
+                    return; // Прерываем выполнение, чтобы не было ошибок в консоли
+                }
+                // Если ответ успешный, преобразуем его в JSON
+                if (response.ok) {
+                    return response.json();
+                }
+                // Если произошла другая ошибка, сообщаем о ней
+                throw new Error('Сетевой ответ был некорректным.');
+            })
+            .then(data => {
+                // Убеждаемся, что данные пришли, и `then` не был вызван после return;
+                if (data) {
+                    console.log("Данные успешно получены:", data);
+
+                    // Очищаем контейнер перед добавлением новых данных
+                    thoughtsContainer.innerHTML = ''; 
+
+                    // Отображаем данные на странице
+                    if (data.length > 0) {
+                        data.forEach(thought => {
+                            const thoughtElement = document.createElement('div');
+                            thoughtElement.textContent = thought.text; // Отображаем текст мысли
+                            thoughtsContainer.appendChild(thoughtElement);
+                        });
+                    } else {
+                        thoughtsContainer.textContent = 'У вас пока нет мыслей.';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при получении данных:', error);
+                // Сообщаем пользователю об ошибке
+                thoughtsContainer.textContent = 'Не удалось загрузить данные.';
+            });
     }
 });
 //------------------------------------------------------------------
