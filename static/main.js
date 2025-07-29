@@ -10,18 +10,16 @@ document.querySelectorAll('.action-btn, .action-btn-icon').forEach(btn => {
   });
 });
 
-// Ожидаем загрузки DOM
 document.addEventListener('DOMContentLoaded', function() {
-    // Находим кнопку "Выйти" по тексту
-    const logoutButtons = document.querySelectorAll('.menu-item');
-    logoutButtons.forEach(button => {
-        if (button.textContent.trim() === 'Выйти') {
-            button.addEventListener('click', function() {
-                // Перенаправляем на страницу входа
-                window.location.href = '/templates/login.html';
-            });
-        }
-    });
+    // Находим кнопку "Выйти" по её уникальному идентификатору
+    const logoutButton = document.getElementById('logout-btn');
+
+    if (logoutButton) {
+        logoutButton.addEventListener('click', function() {
+            // Перенаправляем на серверный маршрут для выхода
+            window.location.href = '/logout';
+        });
+    }
 });
 //------------------------------------------------------------------
 
