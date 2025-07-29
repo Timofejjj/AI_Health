@@ -10,6 +10,20 @@ document.querySelectorAll('.action-btn, .action-btn-icon').forEach(btn => {
   });
 });
 
+document.getElementById('logout-btn').addEventListener('click', function() {
+    // Отправляем запрос на сервер для выхода
+    fetch('/logout', {
+        method: 'POST',
+        credentials: 'same-origin' // для передачи кук
+    })
+    .then(response => {
+        if (response.ok) {
+            window.location.href = '/login.html'; // Перенаправляем после выхода
+        }
+    })
+    .catch(error => console.error('Ошибка при выходе:', error));
+});
+
 //------------------------------------------------------------------
 
 
