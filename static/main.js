@@ -10,20 +10,19 @@ document.querySelectorAll('.action-btn, .action-btn-icon').forEach(btn => {
   });
 });
 
-document.getElementById('logout-btn').addEventListener('click', function() {
-    // Отправляем запрос на сервер для выхода
-    fetch('/logout', {
-        method: 'POST',
-        credentials: 'same-origin' // для передачи кук
-    })
-    .then(response => {
-        if (response.ok) {
-            window.location.href = 'templates/login.html'; // Перенаправляем после выхода
+// Ожидаем загрузки DOM
+document.addEventListener('DOMContentLoaded', function() {
+    // Находим кнопку "Выйти" по тексту
+    const logoutButtons = document.querySelectorAll('.menu-item');
+    logoutButtons.forEach(button => {
+        if (button.textContent.trim() === 'Выйти') {
+            button.addEventListener('click', function() {
+                // Перенаправляем на страницу входа
+                window.location.href = 'login.html';
+            });
         }
-    })
-    .catch(error => console.error('Ошибка при выходе:', error));
+    });
 });
-
 //------------------------------------------------------------------
 
 
